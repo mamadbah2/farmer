@@ -1,7 +1,5 @@
+//go:build ignore
+
 package main
 
-import "fmt"
-
-func main(){
-	fmt.Println("Hello, World!")
-}
+// Obsolete placeholder. Please run `go run ./cmd/server`.
