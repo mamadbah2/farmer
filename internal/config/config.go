@@ -10,9 +10,10 @@ import (
 
 // Config represents the full application configuration surface.
 type Config struct {
-	Server   ServerConfig
-	WhatsApp WhatsAppConfig
-	Sheets   SheetsConfig
+	Server    ServerConfig
+	WhatsApp  WhatsAppConfig
+	Sheets    SheetsConfig
+	Reporting ReportingConfig
 }
 
 // ServerConfig holds HTTP server related options.
@@ -27,12 +28,19 @@ type WhatsAppConfig struct {
 	VerifyToken   string
 	BaseURL       string
 	APIVersion    string
+	GroupID       string
 }
 
 // SheetsConfig contains configuration required to interact with Google Sheets.
 type SheetsConfig struct {
 	CredentialsPath string
 	SpreadsheetID   string
+}
+
+// ReportingConfig holds scheduler-related settings.
+type ReportingConfig struct {
+	CronSchedule string
+	Timezone     string
 }
 
 // Load reads environment variables (optionally from the provided file) and
@@ -60,10 +68,15 @@ func Load(envFile string) (*Config, error) {
 			VerifyToken:   os.Getenv("META_VERIFY_TOKEN"),
 			BaseURL:       getenvWithDefault("WHATSAPP_BASE_URL", "https://graph.facebook.com"),
 			APIVersion:    getenvWithDefault("WHATSAPP_API_VERSION", "v20.0"),
+			GroupID:       os.Getenv("WHATSAPP_GROUP_ID"),
 		},
 		Sheets: SheetsConfig{
 			CredentialsPath: os.Getenv("GOOGLE_SHEETS_CREDENTIALS_PATH"),
 			SpreadsheetID:   os.Getenv("GOOGLE_SHEET_DATABASE_ID"),
+		},
+		Reporting: ReportingConfig{
+			CronSchedule: getenvWithDefault("REPORT_CRON_SCHEDULE", "0 20 * * *"),
+			Timezone:     getenvWithDefault("TIMEZONE", "Africa/Conakry"),
 		},
 	}
 
@@ -101,12 +114,24 @@ func (c *Config) Validate() error {
 		return errors.New("WHATSAPP_API_VERSION must not be empty")
 	}
 
+	if c.WhatsApp.GroupID == "" {
+		return errors.New("WHATSAPP_GROUP_ID must be provided")
+	}
+
 	if c.Sheets.CredentialsPath == "" {
 		return errors.New("GOOGLE_SHEETS_CREDENTIALS_PATH must be provided")
 	}
 
 	if c.Sheets.SpreadsheetID == "" {
 		return errors.New("GOOGLE_SHEET_DATABASE_ID must be provided")
+	}
+
+	if c.Reporting.CronSchedule == "" {
+		return errors.New("REPORT_CRON_SCHEDULE must be provided")
+	}
+
+	if c.Reporting.Timezone == "" {
+		return errors.New("TIMEZONE must be provided")
 	}
 
 	return nil
