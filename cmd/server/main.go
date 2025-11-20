@@ -11,8 +11,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/mamadbah2/farmer/internal/config"
+	"github.com/mamadbah2/farmer/internal/repository/sheets"
 	"github.com/mamadbah2/farmer/internal/server/handlers"
 	"github.com/mamadbah2/farmer/internal/server/router"
+	commandsvc "github.com/mamadbah2/farmer/internal/service/commands"
+	reportingsvc "github.com/mamadbah2/farmer/internal/service/reporting"
 	whatsappsvc "github.com/mamadbah2/farmer/internal/service/whatsapp"
 	whatsappclient "github.com/mamadbah2/farmer/pkg/clients/whatsapp"
 	"github.com/mamadbah2/farmer/pkg/logger"
@@ -29,8 +32,16 @@ func main() {
 
 	zap.ReplaceGlobals(baseLogger)
 
+	sheetsRepo, err := sheets.NewGoogleSheetRepository(context.Background(), cfg.Sheets, baseLogger.Named("repo.sheets"))
+	if err != nil {
+		baseLogger.Fatal("failed to init sheets repository", zap.Error(err))
+	}
+
+	reportingSvc := reportingsvc.NewService(sheetsRepo, baseLogger.Named("svc.reporting"))
+	commandDispatcher := commandsvc.NewService(sheetsRepo, reportingSvc, baseLogger.Named("svc.commands"))
+
 	whatsClient := whatsappclient.NewClient(cfg.WhatsApp)
-	messagingSvc := whatsappsvc.NewMetaWhatsAppService(cfg.WhatsApp, whatsClient, baseLogger.Named("svc.whatsapp"))
+	messagingSvc := whatsappsvc.NewMetaWhatsAppService(cfg.WhatsApp, whatsClient, commandDispatcher, baseLogger.Named("svc.whatsapp"))
 	webhookHandler := handlers.NewWebhookHandler(messagingSvc, baseLogger.Named("handlers.whatsapp"))
 	engine := router.New(webhookHandler, baseLogger.Named("router"))
 

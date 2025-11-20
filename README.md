@@ -8,7 +8,8 @@ Smart Poultry Farm automation service that ingests WhatsApp worker updates, clas
 - ✅ Automated replies via WhatsApp Cloud API (resty client)
 - ✅ Clean layered architecture (config, clients, services, handlers)
 - ✅ Structured logging with Zap
-- ✅ Ready for future integrations (Google Sheets, IoT, reporting) via TODO hooks
+- ✅ Google Sheets persistence + lightweight reporting summaries
+- ✅ Ready for future integrations (dashboards, IoT, scheduled reports)
 
 ## Project Layout
 ```
@@ -24,8 +25,9 @@ pkg/logger                  # Zap logger helper
 
 ## Getting Started
 1. **Requirements**
-   - Go 1.25+
-   - WhatsApp Cloud API credentials (token, phone number ID, verify token)
+  - Go 1.25+
+  - WhatsApp Cloud API credentials (token, phone number ID, verify token)
+  - Google Cloud service account JSON with Sheets API enabled (read/write)
 
 2. **Setup**
    ```bash
@@ -46,6 +48,8 @@ pkg/logger                  # Zap logger helper
    - `META_VERIFY_TOKEN` – Verification token you configured in Meta dashboard
    - `WHATSAPP_BASE_URL` (optional) – defaults to `https://graph.facebook.com`
    - `WHATSAPP_API_VERSION` (optional) – defaults to `v20.0`
+  - `GOOGLE_SHEETS_CREDENTIALS_PATH` – Absolute path to service account JSON credentials
+  - `GOOGLE_SHEET_DATABASE_ID` – Target spreadsheet ID to store farm records
 
 ## HTTP Endpoints
 | Method | Path           | Description |

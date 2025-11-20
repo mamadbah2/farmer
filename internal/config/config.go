@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Server   ServerConfig
 	WhatsApp WhatsAppConfig
+	Sheets   SheetsConfig
 }
 
 // ServerConfig holds HTTP server related options.
@@ -26,6 +27,12 @@ type WhatsAppConfig struct {
 	VerifyToken   string
 	BaseURL       string
 	APIVersion    string
+}
+
+// SheetsConfig contains configuration required to interact with Google Sheets.
+type SheetsConfig struct {
+	CredentialsPath string
+	SpreadsheetID   string
 }
 
 // Load reads environment variables (optionally from the provided file) and
@@ -53,6 +60,10 @@ func Load(envFile string) (*Config, error) {
 			VerifyToken:   os.Getenv("META_VERIFY_TOKEN"),
 			BaseURL:       getenvWithDefault("WHATSAPP_BASE_URL", "https://graph.facebook.com"),
 			APIVersion:    getenvWithDefault("WHATSAPP_API_VERSION", "v20.0"),
+		},
+		Sheets: SheetsConfig{
+			CredentialsPath: os.Getenv("GOOGLE_SHEETS_CREDENTIALS_PATH"),
+			SpreadsheetID:   os.Getenv("GOOGLE_SHEET_DATABASE_ID"),
 		},
 	}
 
@@ -88,6 +99,14 @@ func (c *Config) Validate() error {
 
 	if c.WhatsApp.APIVersion == "" {
 		return errors.New("WHATSAPP_API_VERSION must not be empty")
+	}
+
+	if c.Sheets.CredentialsPath == "" {
+		return errors.New("GOOGLE_SHEETS_CREDENTIALS_PATH must be provided")
+	}
+
+	if c.Sheets.SpreadsheetID == "" {
+		return errors.New("GOOGLE_SHEET_DATABASE_ID must be provided")
 	}
 
 	return nil

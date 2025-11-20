@@ -11,6 +11,7 @@ import (
 
 	"github.com/mamadbah2/farmer/internal/config"
 	"github.com/mamadbah2/farmer/internal/domain/models"
+	commandsvc "github.com/mamadbah2/farmer/internal/service/commands"
 	client "github.com/mamadbah2/farmer/pkg/clients/whatsapp"
 )
 
@@ -23,17 +24,19 @@ type MessagingService interface {
 
 // MetaWhatsAppService is the production implementation backed by WhatsApp Cloud API.
 type MetaWhatsAppService struct {
-	cfg    config.WhatsAppConfig
-	client client.Client
-	logger *zap.Logger
+	cfg        config.WhatsAppConfig
+	client     client.Client
+	dispatcher commandsvc.Dispatcher
+	logger     *zap.Logger
 }
 
 // NewMetaWhatsAppService wires a new service instance.
-func NewMetaWhatsAppService(cfg config.WhatsAppConfig, client client.Client, logger *zap.Logger) *MetaWhatsAppService {
+func NewMetaWhatsAppService(cfg config.WhatsAppConfig, client client.Client, dispatcher commandsvc.Dispatcher, logger *zap.Logger) *MetaWhatsAppService {
 	svc := &MetaWhatsAppService{
-		cfg:    cfg,
-		client: client,
-		logger: logger,
+		cfg:        cfg,
+		client:     client,
+		dispatcher: dispatcher,
+		logger:     logger,
 	}
 	if svc.logger == nil {
 		svc.logger = zap.NewNop()
@@ -120,29 +123,55 @@ func (s *MetaWhatsAppService) handleInboundMessage(ctx context.Context, msg mode
 	}
 
 	cmd := models.ParseCommand(text)
-	reply := commandReplies[cmd.Type]
-	if reply.Message == "" {
-		reply = commandReplies[models.CommandUnknown]
-	}
-
-	outbound := fmt.Sprintf("%s\n%s", reply.Title, reply.Message)
 
 	s.logger.Info("parsed inbound command",
 		zap.String("from", msg.From),
 		zap.String("command", string(cmd.Type)),
 		zap.Any("args", cmd.Args))
 
-	// TODO: persist parsed command for reporting when storage module is ready.
+	if cmd.Type == models.CommandUnknown {
+		reply := commandReplies[models.CommandUnknown]
+		return s.sendReply(ctx, msg.From, fmt.Sprintf("%s\n%s", reply.Title, reply.Message))
+	}
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	if s.dispatcher == nil {
+		s.logger.Warn("command dispatcher not configured")
+		reply := commandReplies[cmd.Type]
+		outbound := fmt.Sprintf("%s\n%s", reply.Title, reply.Message)
+		return s.sendReply(ctx, msg.From, outbound)
+	}
 
-	_, err := s.client.SendTextMessage(ctxWithTimeout, client.SendTextMessageRequest{
-		To:         msg.From,
-		Body:       outbound,
-		PreviewURL: false,
-	})
-	return err
+	response, err := s.dispatcher.HandleCommand(ctx, cmd, msg.From)
+	if err != nil {
+		s.logger.Warn("dispatcher failed to handle command", zap.Error(err), zap.String("command", string(cmd.Type)))
+		reply := commandReplies[cmd.Type]
+		if reply.Message == "" {
+			reply = commandReplies[models.CommandUnknown]
+		}
+
+		var outbound string
+		switch {
+		case errors.Is(err, commandsvc.ErrInvalidArguments):
+			outbound = fmt.Sprintf("Could not parse your %s update.\n%s", string(cmd.Type), reply.Message)
+		case errors.Is(err, commandsvc.ErrUnsupportedCommand):
+			outbound = fmt.Sprintf("%s\n%s", reply.Title, reply.Message)
+		default:
+			outbound = "We hit a technical issue storing your update. Please retry shortly."
+		}
+
+		return s.sendReply(ctx, msg.From, outbound)
+	}
+
+	if response == "" {
+		reply := commandReplies[cmd.Type]
+		if reply.Title != "" {
+			response = fmt.Sprintf("%s update logged.", reply.Title)
+		} else {
+			response = "Update stored successfully."
+		}
+	}
+
+	return s.sendReply(ctx, msg.From, response)
 }
 
 // SendOutbound lets internal operators push quick notifications via HTTP.
@@ -154,6 +183,18 @@ func (s *MetaWhatsAppService) SendOutbound(ctx context.Context, req models.Outbo
 		To:         req.To,
 		Body:       req.Message,
 		PreviewURL: req.PreviewURL,
+	})
+	return err
+}
+
+func (s *MetaWhatsAppService) sendReply(ctx context.Context, to, body string) error {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	_, err := s.client.SendTextMessage(ctxWithTimeout, client.SendTextMessageRequest{
+		To:         to,
+		Body:       body,
+		PreviewURL: false,
 	})
 	return err
 }
