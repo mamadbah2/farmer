@@ -14,6 +14,7 @@ type Config struct {
 	WhatsApp  WhatsAppConfig
 	Sheets    SheetsConfig
 	Reporting ReportingConfig
+	AI        AIConfig
 }
 
 // ServerConfig holds HTTP server related options.
@@ -41,6 +42,11 @@ type SheetsConfig struct {
 type ReportingConfig struct {
 	CronSchedule string
 	Timezone     string
+}
+
+// AIConfig holds settings for LLM providers.
+type AIConfig struct {
+    AnthropicKey string
 }
 
 // Load reads environment variables (optionally from the provided file) and
@@ -77,6 +83,9 @@ func Load(envFile string) (*Config, error) {
 		Reporting: ReportingConfig{
 			CronSchedule: getenvWithDefault("REPORT_CRON_SCHEDULE", "0 20 * * *"),
 			Timezone:     getenvWithDefault("TIMEZONE", "Africa/Conakry"),
+		},
+		AI: AIConfig{
+			AnthropicKey: os.Getenv("ANTHROPIC_API_KEY"),
 		},
 	}
 
@@ -133,6 +142,11 @@ func (c *Config) Validate() error {
 	if c.Reporting.Timezone == "" {
 		return errors.New("TIMEZONE must be provided")
 	}
+
+    if c.AI.AnthropicKey == "" {
+        return errors.New("ANTHROPIC_API_KEY must be provided")
+    }
+
 
 	return nil
 }

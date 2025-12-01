@@ -12,6 +12,7 @@ import (
 	"github.com/mamadbah2/farmer/internal/config"
 	"github.com/mamadbah2/farmer/internal/domain/models"
 	commandsvc "github.com/mamadbah2/farmer/internal/service/commands"
+	"github.com/mamadbah2/farmer/pkg/clients/anthropic"
 	client "github.com/mamadbah2/farmer/pkg/clients/whatsapp"
 )
 
@@ -26,15 +27,17 @@ type MessagingService interface {
 type MetaWhatsAppService struct {
 	cfg        config.WhatsAppConfig
 	client     client.Client
+	aiClient   anthropic.Client
 	dispatcher commandsvc.Dispatcher
 	logger     *zap.Logger
 }
 
 // NewMetaWhatsAppService wires a new service instance.
-func NewMetaWhatsAppService(cfg config.WhatsAppConfig, client client.Client, dispatcher commandsvc.Dispatcher, logger *zap.Logger) *MetaWhatsAppService {
+func NewMetaWhatsAppService(cfg config.WhatsAppConfig, client client.Client, aiClient anthropic.Client, dispatcher commandsvc.Dispatcher, logger *zap.Logger) *MetaWhatsAppService {
 	svc := &MetaWhatsAppService{
 		cfg:        cfg,
 		client:     client,
+		aiClient:   aiClient,
 		dispatcher: dispatcher,
 		logger:     logger,
 	}
@@ -123,6 +126,21 @@ func (s *MetaWhatsAppService) handleInboundMessage(ctx context.Context, msg mode
 	}
 
 	cmd := models.ParseCommand(text)
+
+	// 2. If unknown and AI is configured, try to translate natural language
+    if cmd.Type == models.CommandUnknown && s.aiClient != nil {
+        s.logger.Info("attempting ai translation", zap.String("input", text))
+        translated, err := s.aiClient.TranslateToCommand(ctx, text)
+        
+        if err != nil {
+            s.logger.Error("ai translation failed", zap.Error(err))
+            // Fallthrough to unknown command handling
+        } else {
+            s.logger.Info("ai translated command", zap.String("original", text), zap.String("translated", translated))
+            // If AI returns "unknown", ParseCommand will handle it as unknown anyway
+            cmd = models.ParseCommand(translated)
+        }
+    }
 
 	s.logger.Info("parsed inbound command",
 		zap.String("from", msg.From),

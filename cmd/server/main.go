@@ -17,6 +17,7 @@ import (
 	commandsvc "github.com/mamadbah2/farmer/internal/service/commands"
 	reportingsvc "github.com/mamadbah2/farmer/internal/service/reporting"
 	whatsappsvc "github.com/mamadbah2/farmer/internal/service/whatsapp"
+	"github.com/mamadbah2/farmer/pkg/clients/anthropic"
 	whatsappclient "github.com/mamadbah2/farmer/pkg/clients/whatsapp"
 	"github.com/mamadbah2/farmer/pkg/logger"
 )
@@ -40,8 +41,17 @@ func main() {
 	reportingSvc := reportingsvc.NewService(sheetsRepo, baseLogger.Named("svc.reporting"))
 	commandDispatcher := commandsvc.NewService(sheetsRepo, reportingSvc, baseLogger.Named("svc.commands"))
 
+	// Initialize AI Client
+    var aiClient anthropic.Client
+    if cfg.AI.AnthropicKey != "" {
+        aiClient = anthropic.NewClient(cfg.AI.AnthropicKey)
+        baseLogger.Info("anthropic ai client enabled")
+    } else {
+        baseLogger.Warn("anthropic api key missing, natural language processing disabled")
+    }
+
 	whatsClient := whatsappclient.NewClient(cfg.WhatsApp)
-	messagingSvc := whatsappsvc.NewMetaWhatsAppService(cfg.WhatsApp, whatsClient, commandDispatcher, baseLogger.Named("svc.whatsapp"))
+	messagingSvc := whatsappsvc.NewMetaWhatsAppService(cfg.WhatsApp, whatsClient, aiClient, commandDispatcher, baseLogger.Named("svc.whatsapp"))
 	webhookHandler := handlers.NewWebhookHandler(messagingSvc, baseLogger.Named("handlers.whatsapp"))
 	engine := router.New(webhookHandler, baseLogger.Named("router"))
 
