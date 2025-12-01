@@ -5,7 +5,10 @@ import "time"
 // EggRecord captures daily egg production metrics.
 type EggRecord struct {
 	Date     time.Time
-	Quantity int
+	Band1    int
+	Band2    int
+	Band3    int
+	Quantity int // Total
 	Notes    string
 }
 

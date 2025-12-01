@@ -50,7 +50,7 @@ func NewMetaWhatsAppService(cfg config.WhatsAppConfig, client client.Client, aiC
 var commandReplies = map[models.CommandType]models.AutomationReply{
 	models.CommandEggs: {
 		Title:   "Egg Collection",
-		Message: "Please provide today's egg count in trays and cracked count, e.g. /eggs 120 trays 3 cracked.",
+		Message: "Please provide egg counts for all 3 bands, e.g. /eggs 120 130 110 (Band1 Band2 Band3).",
 	},
 	models.CommandFeed: {
 		Title:   "Feed Usage",
@@ -128,19 +128,19 @@ func (s *MetaWhatsAppService) handleInboundMessage(ctx context.Context, msg mode
 	cmd := models.ParseCommand(text)
 
 	// 2. If unknown and AI is configured, try to translate natural language
-    if cmd.Type == models.CommandUnknown && s.aiClient != nil {
-        s.logger.Info("attempting ai translation", zap.String("input", text))
-        translated, err := s.aiClient.TranslateToCommand(ctx, text)
-        
-        if err != nil {
-            s.logger.Error("ai translation failed", zap.Error(err))
-            // Fallthrough to unknown command handling
-        } else {
-            s.logger.Info("ai translated command", zap.String("original", text), zap.String("translated", translated))
-            // If AI returns "unknown", ParseCommand will handle it as unknown anyway
-            cmd = models.ParseCommand(translated)
-        }
-    }
+	if cmd.Type == models.CommandUnknown && s.aiClient != nil {
+		s.logger.Info("attempting ai translation", zap.String("input", text))
+		translated, err := s.aiClient.TranslateToCommand(ctx, text)
+
+		if err != nil {
+			s.logger.Error("ai translation failed", zap.Error(err))
+			// Fallthrough to unknown command handling
+		} else {
+			s.logger.Info("ai translated command", zap.String("original", text), zap.String("translated", translated))
+			// If AI returns "unknown", ParseCommand will handle it as unknown anyway
+			cmd = models.ParseCommand(translated)
+		}
+	}
 
 	s.logger.Info("parsed inbound command",
 		zap.String("from", msg.From),

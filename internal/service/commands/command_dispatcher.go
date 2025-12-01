@@ -21,7 +21,7 @@ var ErrInvalidArguments = errors.New("invalid command arguments")
 var ErrUnsupportedCommand = errors.New("unsupported command")
 
 const (
-	eggsWriteRange      = "Eggs!A:C"
+	eggsWriteRange      = "Eggs!A:F"
 	feedWriteRange      = "Feed!A:C"
 	mortalityWriteRange = "Mortality!A:C"
 	salesWriteRange     = "Sales!A:E"
@@ -166,7 +166,14 @@ func (s *Service) HandleCommand(ctx context.Context, cmd models.Command, sender 
 
 // SaveEggsRecord persists an egg record to Google Sheets.
 func (s *Service) SaveEggsRecord(ctx context.Context, record models.EggRecord) error {
-	values := []interface{}{record.Date.Format(dateFormat), record.Quantity, record.Notes}
+	values := []interface{}{
+		record.Date.Format(dateFormat),
+		record.Band1,
+		record.Band2,
+		record.Band3,
+		record.Quantity,
+		record.Notes,
+	}
 	return s.repo.WriteRow(ctx, eggsWriteRange, values)
 }
 
@@ -195,21 +202,33 @@ func (s *Service) SaveExpenseRecord(ctx context.Context, record models.ExpenseRe
 }
 
 func (s *Service) buildEggRecord(cmd models.Command, now time.Time) (models.EggRecord, error) {
-	if len(cmd.Args) == 0 {
-		return models.EggRecord{}, ErrInvalidArguments
+	if len(cmd.Args) < 3 {
+		return models.EggRecord{}, errors.New("requires 3 arguments: band1 band2 band3")
 	}
 
-	quantity, err := strconv.Atoi(cmd.Args[0])
-	if err != nil {
+	b1, err1 := strconv.Atoi(cmd.Args[0])
+	b2, err2 := strconv.Atoi(cmd.Args[1])
+	b3, err3 := strconv.Atoi(cmd.Args[2])
+
+	if err1 != nil || err2 != nil || err3 != nil {
 		return models.EggRecord{}, ErrInvalidArguments
 	}
 
 	notes := ""
-	if len(cmd.Args) > 1 {
-		notes = strings.Join(cmd.Args[1:], " ")
+	if len(cmd.Args) > 3 {
+		notes = strings.Join(cmd.Args[3:], " ")
 	}
 
-	return models.EggRecord{Date: now, Quantity: quantity, Notes: notes}, nil
+	total := b1 + b2 + b3
+
+	return models.EggRecord{
+		Date:     now,
+		Band1:    b1,
+		Band2:    b2,
+		Band3:    b3,
+		Quantity: total,
+		Notes:    notes,
+	}, nil
 }
 
 func (s *Service) buildFeedRecord(cmd models.Command, now time.Time) (models.FeedRecord, error) {
