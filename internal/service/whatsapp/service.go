@@ -29,6 +29,7 @@ type MetaWhatsAppService struct {
 	client     client.Client
 	aiClient   anthropic.Client
 	dispatcher commandsvc.Dispatcher
+	sessions   *SessionManager
 	logger     *zap.Logger
 }
 
@@ -39,6 +40,7 @@ func NewMetaWhatsAppService(cfg config.WhatsAppConfig, client client.Client, aiC
 		client:     client,
 		aiClient:   aiClient,
 		dispatcher: dispatcher,
+		sessions:   NewSessionManager(),
 		logger:     logger,
 	}
 	if svc.logger == nil {
@@ -125,41 +127,144 @@ func (s *MetaWhatsAppService) handleInboundMessage(ctx context.Context, msg mode
 		return errors.New("empty message body")
 	}
 
+	// 1. Check if it's a direct command (starts with /)
+	if strings.HasPrefix(text, "/") {
+		cmd := models.ParseCommand(text)
+		return s.executeCommand(ctx, cmd, msg.From)
+	}
+
+	// 2. If AI is enabled, use the conversational flow
+	if s.aiClient != nil {
+		return s.handleConversation(ctx, msg.From, text)
+	}
+
+	// 3. Fallback to legacy command parsing for non-AI mode
 	cmd := models.ParseCommand(text)
+	return s.executeCommand(ctx, cmd, msg.From)
+}
 
-	// 2. If unknown and AI is configured, try to translate natural language
-	if cmd.Type == models.CommandUnknown && s.aiClient != nil {
-		s.logger.Info("attempting ai translation", zap.String("input", text))
-		translated, err := s.aiClient.TranslateToCommand(ctx, text)
+func (s *MetaWhatsAppService) handleConversation(ctx context.Context, userID, input string) error {
+	// Get current session state
+	currentState := s.sessions.GetSession(userID)
 
+	// Process with AI
+	newState, reply, err := s.aiClient.ProcessConversation(ctx, currentState, input)
+	if err != nil {
+		s.logger.Error("ai conversation failed", zap.Error(err))
+		return s.sendReply(ctx, userID, "Désolé, une erreur technique est survenue. Veuillez réessayer.")
+	}
+
+	// Update session
+	s.sessions.UpdateSession(userID, newState)
+
+	// Check if conversation is complete
+	if newState.Step == "COMPLETED" {
+		// Save all data
+		if err := s.saveDailyReport(ctx, newState); err != nil {
+			s.logger.Error("failed to save daily report", zap.Error(err))
+			return s.sendReply(ctx, userID, "Merci, mais j'ai eu un problème pour sauvegarder les données. Veuillez contacter l'admin.")
+		}
+
+		// Clear session and confirm
+		s.sessions.ClearSession(userID)
+		return s.sendReply(ctx, userID, "✅ Rapport journalier enregistré avec succès ! À demain.")
+	}
+
+	// Otherwise, send the AI's follow-up question
+	return s.sendReply(ctx, userID, reply)
+}
+
+func (s *MetaWhatsAppService) saveDailyReport(ctx context.Context, state anthropic.ConversationState) error {
+	s.logger.Info("attempting to save daily report",
+		zap.Any("eggs_b1", state.EggsBand1),
+		zap.Any("eggs_b2", state.EggsBand2),
+		zap.Any("eggs_b3", state.EggsBand3),
+		zap.Any("sales", state.SalesQty),
+		zap.Any("mortality", state.MortalityQty),
+		zap.String("notes", state.Notes),
+	)
+
+	if s.dispatcher == nil {
+		return errors.New("dispatcher not configured")
+	}
+
+	// Save Eggs
+	if state.EggsBand1 != nil || state.EggsBand2 != nil || state.EggsBand3 != nil {
+		b1, b2, b3 := 0, 0, 0
+		if state.EggsBand1 != nil {
+			b1 = *state.EggsBand1
+		}
+		if state.EggsBand2 != nil {
+			b2 = *state.EggsBand2
+		}
+		if state.EggsBand3 != nil {
+			b3 = *state.EggsBand3
+		}
+
+		err := s.dispatcher.SaveEggsRecord(ctx, models.EggRecord{
+			Date:     time.Now(),
+			Band1:    b1,
+			Band2:    b2,
+			Band3:    b3,
+			Quantity: b1 + b2 + b3,
+			Notes:    state.Notes,
+		})
 		if err != nil {
-			s.logger.Error("ai translation failed", zap.Error(err))
-			// Fallthrough to unknown command handling
-		} else {
-			s.logger.Info("ai translated command", zap.String("original", text), zap.String("translated", translated))
-			// If AI returns "unknown", ParseCommand will handle it as unknown anyway
-			cmd = models.ParseCommand(translated)
+			return fmt.Errorf("saving eggs: %w", err)
 		}
 	}
 
-	s.logger.Info("parsed inbound command",
-		zap.String("from", msg.From),
-		zap.String("command", string(cmd.Type)),
-		zap.Any("args", cmd.Args))
-
-	if cmd.Type == models.CommandUnknown {
-		reply := commandReplies[models.CommandUnknown]
-		return s.sendReply(ctx, msg.From, fmt.Sprintf("%s\n%s", reply.Title, reply.Message))
+	// Save Sales
+	if state.SalesQty != nil && *state.SalesQty >= 0 {
+		err := s.dispatcher.SaveSaleRecord(ctx, models.SaleRecord{
+			Date:         time.Now(),
+			Client:       "Daily Report",
+			Quantity:     *state.SalesQty,
+			PricePerUnit: 0, // Price not captured in this flow yet
+			Paid:         0,
+		})
+		if err != nil {
+			return fmt.Errorf("saving sales: %w", err)
+		}
 	}
 
+	// Save Mortality
+	if state.MortalityQty != nil && *state.MortalityQty >= 0 {
+		qty := *state.MortalityQty
+        reason := state.MortalityBand
+
+        // Si quantité est 0 et pas de raison, on écrit "RAS" ou "Aucune"
+        if qty == 0 && (reason == "" || reason == "0") {
+            reason = "RAS"
+        }
+
+        err := s.dispatcher.SaveMortalityRecord(ctx, models.MortalityRecord{
+            Date:     time.Now(),
+            Quantity: qty,
+            Reason:   reason,
+        })
+        if err != nil {
+            return fmt.Errorf("saving mortality: %w", err)
+        }
+	}
+
+	// Save Feed/Notes (if not already saved with eggs)
+	// We can use the Feed sheet to log "Feed Received" boolean if needed,
+	// or just rely on the Notes in the Egg sheet.
+	// For now, let's assume Notes in Egg sheet covers general observations.
+
+	return nil
+}
+
+func (s *MetaWhatsAppService) executeCommand(ctx context.Context, cmd models.Command, sender string) error {
 	if s.dispatcher == nil {
 		s.logger.Warn("command dispatcher not configured")
 		reply := commandReplies[cmd.Type]
 		outbound := fmt.Sprintf("%s\n%s", reply.Title, reply.Message)
-		return s.sendReply(ctx, msg.From, outbound)
+		return s.sendReply(ctx, sender, outbound)
 	}
 
-	response, err := s.dispatcher.HandleCommand(ctx, cmd, msg.From)
+	response, err := s.dispatcher.HandleCommand(ctx, cmd, sender)
 	if err != nil {
 		s.logger.Warn("dispatcher failed to handle command", zap.Error(err), zap.String("command", string(cmd.Type)))
 		reply := commandReplies[cmd.Type]
@@ -177,7 +282,7 @@ func (s *MetaWhatsAppService) handleInboundMessage(ctx context.Context, msg mode
 			outbound = "We hit a technical issue storing your update. Please retry shortly."
 		}
 
-		return s.sendReply(ctx, msg.From, outbound)
+		return s.sendReply(ctx, sender, outbound)
 	}
 
 	if response == "" {
@@ -189,7 +294,7 @@ func (s *MetaWhatsAppService) handleInboundMessage(ctx context.Context, msg mode
 		}
 	}
 
-	return s.sendReply(ctx, msg.From, response)
+	return s.sendReply(ctx, sender, response)
 }
 
 // SendOutbound lets internal operators push quick notifications via HTTP.
