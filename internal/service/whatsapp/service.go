@@ -186,6 +186,7 @@ func (s *MetaWhatsAppService) saveDailyReport(ctx context.Context, state anthrop
 
 	if s.dispatcher == nil {
 		return errors.New("dispatcher not configured")
+		
 	}
 
 	// Save Eggs
