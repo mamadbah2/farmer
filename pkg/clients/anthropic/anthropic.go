@@ -49,8 +49,81 @@ type ConversationState struct {
 	ReceptionQty   *int     `json:"reception_qty,omitempty"`   // Alveoles reçues
 	ReceptionPrice *float64 `json:"reception_price,omitempty"` // Prix unitaire réception
 
+	// Expense fields (Saikou)
+	ExpenseCategory  *string  `json:"expense_category,omitempty"`
+	ExpenseQty       *float64 `json:"expense_qty,omitempty"`
+	ExpenseUnitPrice *float64 `json:"expense_unit_price,omitempty"`
+	ExpenseNotes     *string  `json:"expense_notes,omitempty"`
+
 	// History tracks the conversation context
 	History []Message `json:"history,omitempty"`
+}
+
+// Merge updates the current state with non-null values from the new state.
+// It ensures that previously collected data is not lost if the AI fails to return it.
+func (s *ConversationState) Merge(newState ConversationState) {
+	s.Step = newState.Step
+	s.History = newState.History
+
+	// Farmer fields
+	if newState.EggsBand1 != nil {
+		s.EggsBand1 = newState.EggsBand1
+	}
+	if newState.EggsBand2 != nil {
+		s.EggsBand2 = newState.EggsBand2
+	}
+	if newState.EggsBand3 != nil {
+		s.EggsBand3 = newState.EggsBand3
+	}
+	if newState.MortalityQty != nil {
+		s.MortalityQty = newState.MortalityQty
+	}
+	if newState.MortalityBand != "" {
+		s.MortalityBand = newState.MortalityBand
+	}
+	if newState.FeedReceived != nil {
+		s.FeedReceived = newState.FeedReceived
+	}
+	if newState.FeedQty != nil {
+		s.FeedQty = newState.FeedQty
+	}
+	if newState.Notes != "" {
+		s.Notes = newState.Notes
+	}
+
+	// Seller fields
+	if newState.SaleQty != nil {
+		s.SaleQty = newState.SaleQty
+	}
+	if newState.SalePrice != nil {
+		s.SalePrice = newState.SalePrice
+	}
+	if newState.SaleClient != nil {
+		s.SaleClient = newState.SaleClient
+	}
+	if newState.SalePaid != nil {
+		s.SalePaid = newState.SalePaid
+	}
+	if newState.ReceptionQty != nil {
+		s.ReceptionQty = newState.ReceptionQty
+	}
+	if newState.ReceptionPrice != nil {
+		s.ReceptionPrice = newState.ReceptionPrice
+	}
+
+	// Expense fields
+	if newState.ExpenseCategory != nil {
+		s.ExpenseCategory = newState.ExpenseCategory
+	}
+	if newState.ExpenseQty != nil {
+		s.ExpenseQty = newState.ExpenseQty
+	}
+	if newState.ExpenseUnitPrice != nil {
+		s.ExpenseUnitPrice = newState.ExpenseUnitPrice
+	}
+	if newState.ExpenseNotes != nil {
+		s.ExpenseNotes = newState.ExpenseNotes
+	}
 }
 
 type anthropicClient struct {
@@ -135,6 +208,37 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 				"notes": (string)
 			},
 			"reply": "Text to send to the seller (French)"
+		  }
+		`, string(stateJSON))
+	} else if role == "expense_manager" {
+		systemPrompt = fmt.Sprintf(`You are a helpful assistant for the farm's expense manager (Saikou). Your job is to collect expense data.
+		
+		Current State of Data (JSON):
+		%s
+
+		REQUIRED INFORMATION (Ask in this order if missing):
+		1. Expense Details:
+		   - Category (Rubrique/Dépense)
+		   - Quantity
+		   - Unit Price
+		   - Notes (Motif/Observation)
+
+		RULES:
+		- CRITICAL: PRESERVE STATE. Copy all existing non-null values.
+		- CRITICAL: Output valid JSON. The "reply" field MUST be a single line string. Use literal "\n" for line breaks. Do NOT use actual newlines in the string value.
+		- If the user provides data, update the JSON fields.
+		- If data is missing, ask for the NEXT missing item.
+		- If ALL required fields for the reported activity are filled, set "step" to "COMPLETED".
+		- Your output must be ONLY a JSON object with this structure:
+		  {
+			"updated_state": {
+				"step": "COLLECTING" or "COMPLETED",
+				"expense_category": (string or null),
+				"expense_qty": (float or null),
+				"expense_unit_price": (float or null),
+				"expense_notes": (string or null)
+			},
+			"reply": "Text to send to the expense manager (French)"
 		  }
 		`, string(stateJSON))
 	} else {

@@ -37,9 +37,12 @@ type SaleRecord struct {
 
 // ExpenseRecord captures operating expenses.
 type ExpenseRecord struct {
-	Date   time.Time
-	Label  string
-	Amount float64
+	Date      time.Time
+	Category  string
+	Quantity  float64
+	UnitPrice float64
+	Amount    float64 // Total amount (Quantity * UnitPrice)
+	Notes     string
 }
 
 // EggReceptionRecord captures eggs received by the seller.

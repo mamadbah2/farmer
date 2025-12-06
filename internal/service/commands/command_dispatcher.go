@@ -25,7 +25,7 @@ const (
 	feedWriteRange         = "Feed!A:C"
 	mortalityWriteRange    = "Mortality!A:C"
 	salesWriteRange        = "Sales!A:E"
-	expenseWriteRange      = "Expenses!A:C"
+	expenseWriteRange      = "Expenses!A:E"
 	eggReceptionWriteRange = "EggReception!A:C"
 	dateFormat             = "02/01/2006"
 )
@@ -159,7 +159,7 @@ func (s *Service) HandleCommand(ctx context.Context, cmd models.Command, sender 
 		if err := s.SaveExpenseRecord(ctx, record); err != nil {
 			return "", err
 		}
-		message := fmt.Sprintf("Expense logged: %s %.2f on %s.", record.Label, record.Amount, record.Date.Format(dateFormat))
+		message := fmt.Sprintf("Expense logged: %s %.2f on %s.", record.Category, record.Amount, record.Date.Format(dateFormat))
 		return message, nil
 	default:
 		return "", ErrUnsupportedCommand
@@ -199,7 +199,13 @@ func (s *Service) SaveSaleRecord(ctx context.Context, record models.SaleRecord) 
 
 // SaveExpenseRecord persists expenses transactions.
 func (s *Service) SaveExpenseRecord(ctx context.Context, record models.ExpenseRecord) error {
-	values := []interface{}{record.Date.Format(dateFormat), record.Label, record.Amount}
+	values := []interface{}{
+		record.Date.Format(dateFormat),
+		record.Category,
+		record.Quantity,
+		record.UnitPrice,
+		record.Notes,
+	}
 	return s.repo.WriteRow(ctx, expenseWriteRange, values)
 }
 
@@ -327,7 +333,14 @@ func (s *Service) buildExpenseRecord(cmd models.Command, now time.Time) (models.
 	}
 
 	label := strings.Join(cmd.Args[1:], " ")
-	return models.ExpenseRecord{Date: now, Label: label, Amount: amount}, nil
+	return models.ExpenseRecord{
+		Date:      now,
+		Category:  label,
+		Quantity:  1,
+		UnitPrice: amount,
+		Amount:    amount,
+		Notes:     "Via Command",
+	}, nil
 }
 
 func (s *Service) safeSummary(ctx context.Context, fn func(context.Context) (string, error)) string {
