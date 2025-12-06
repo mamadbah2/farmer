@@ -20,7 +20,7 @@ const (
 // Client defines the interface for AI text processing.
 type Client interface {
 	TranslateToCommand(ctx context.Context, input string) (string, error)
-	ProcessConversation(ctx context.Context, state ConversationState, input string) (ConversationState, string, error)
+	ProcessConversation(ctx context.Context, state ConversationState, input string, role string) (ConversationState, string, error)
 }
 
 // ConversationState holds the accumulated data from the user.
@@ -40,6 +40,14 @@ type ConversationState struct {
 	FeedReceived *bool    `json:"feed_received,omitempty"`
 	FeedQty      *float64 `json:"feed_qty,omitempty"`
 	Notes        string   `json:"notes,omitempty"`
+
+	// Seller fields (Abdullah)
+	SaleQty        *int     `json:"sale_qty,omitempty"`        // Alveoles vendues
+	SalePrice      *float64 `json:"sale_price,omitempty"`      // Prix unitaire
+	SaleClient     *string  `json:"sale_client,omitempty"`     // Nom du client
+	SalePaid       *float64 `json:"sale_paid,omitempty"`       // Montant payé
+	ReceptionQty   *int     `json:"reception_qty,omitempty"`   // Alveoles reçues
+	ReceptionPrice *float64 `json:"reception_price,omitempty"` // Prix unitaire réception
 
 	// History tracks the conversation context
 	History []Message `json:"history,omitempty"`
@@ -83,51 +91,95 @@ func (c *anthropicClient) TranslateToCommand(ctx context.Context, input string) 
 	return "", nil
 }
 
-func (c *anthropicClient) ProcessConversation(ctx context.Context, state ConversationState, input string) (ConversationState, string, error) {
+func (c *anthropicClient) ProcessConversation(ctx context.Context, state ConversationState, input string, role string) (ConversationState, string, error) {
 	// Create a view of state without history for the prompt to avoid token waste/confusion
 	promptState := state
 	promptState.History = nil
 	stateJSON, _ := json.Marshal(promptState)
 
-	systemPrompt := fmt.Sprintf(`You are a helpful farm assistant for a poultry farm. Your job is to collect daily data from the farmer to fill an Excel sheet.
-	
-	Current State of Data (JSON):
-	%s
+	var systemPrompt string
 
-	The user will send a message. You must update the state based on what they say and generate a reply.
-	
-	REQUIRED INFORMATION (Ask in this order if missing):
-	1. Production (Eggs): Quantity for Band 1, Band 2, and Band 3. (User might give total, ask for breakdown if needed, or if they say "100, 120, 130" assume order 1, 2, 3).
-	2. Mortality: Any dead birds? How many and which band? (If 0, that's valid).
-	3. Stock/Observations: Did they receive feed? If yes, how many bags? Any problems?
+	if role == "seller" {
+		systemPrompt = fmt.Sprintf(`You are a helpful assistant for the farm's sales manager (Abdullah). Your job is to collect sales and reception data.
+		
+		Current State of Data (JSON):
+		%s
 
-	RULES:
-	- CRITICAL: PRESERVE STATE. You MUST copy all existing non-null values from the input "Current State" to the "updated_state" in your response. Never drop existing data.
-	- CRITICAL: You MUST update the JSON fields in "updated_state" when the user provides NEW information.
-	- CRITICAL: Output valid JSON. Escape newlines in the "reply" string (use \n). Do not put real line breaks inside the string value.
-	- If the user provides data, update the JSON fields.
-	- If data is missing, your 'reply' should ask for the NEXT missing item in the priority list.
-	- If feed_received is true, you MUST ask for "feed_qty" (number of bags) if it is missing.
-	- If the user says "Rien a signaler" or "RAS" for observations, set Notes to "RAS".
-	- If ALL required fields (Eggs B1-3, Mortality, Feed/Notes) are filled (or explicitly set to 0/None), set the "step" to "COMPLETED".
-	- If the user gives all info at once, fill everything and set "step" to "COMPLETED".
-	- Your output must be ONLY a JSON object with this structure:
-	  {
-		"updated_state": {
-			"step": "COLLECTING" or "COMPLETED",
-			"eggs_band_1": (integer or null),
-			"eggs_band_2": (integer or null),
-			"eggs_band_3": (integer or null),
-			"mortality_qty": (integer or null),
-			"mortality_band": (string or ""),
-			"feed_received": (boolean or null),
-			"feed_qty": (float or null),
-			"notes": (string)
-		},
-		"reply": "Text to send to the farmer"
-	  }
-	- The 'reply' should be in French, polite, and concise.
-	`, string(stateJSON))
+		REQUIRED INFORMATION (Ask in this order if missing):
+		1. Sales: Did you sell eggs? If yes:
+		   - Quantity (trays/alvéoles)
+		   - Unit Price (per tray)
+		   - Client Name
+		   - Amount Paid (Montant payé)
+		2. Reception: Did you receive eggs? If yes:
+		   - Quantity (trays/alvéoles)
+		   - Unit Price (if applicable)
+
+		RULES:
+		- CRITICAL: PRESERVE STATE. Copy all existing non-null values.
+		- CRITICAL: Output valid JSON. The "reply" field MUST be a single line string. Use literal "\n" for line breaks. Do NOT use actual newlines in the string value.
+		- If the user provides data, update the JSON fields.
+		- If data is missing, ask for the NEXT missing item.
+		- If the user says "No sales" or "No reception", you can mark those fields as 0 or handle accordingly.
+		- If ALL required fields for the reported activity are filled, set "step" to "COMPLETED".
+		- Your output must be ONLY a JSON object with this structure:
+		  {
+			"updated_state": {
+				"step": "COLLECTING" or "COMPLETED",
+				"sale_qty": (int or null),
+				"sale_price": (float or null),
+				"sale_client": (string or null),
+				"sale_paid": (float or null),
+				"reception_qty": (int or null),
+				"reception_price": (float or null),
+				"notes": (string)
+			},
+			"reply": "Text to send to the seller (French)"
+		  }
+		`, string(stateJSON))
+	} else {
+		// Default to Farmer (Chaby)
+		systemPrompt = fmt.Sprintf(`You are a helpful farm assistant for a poultry farm. Your job is to collect daily data from the farmer to fill an Excel sheet.
+		
+		Current State of Data (JSON):
+		%s
+
+		The user will send a message. You must update the state based on what they say and generate a reply.
+		
+		REQUIRED INFORMATION (Ask in this order if missing):
+		1. Production (Eggs): Quantity for Band 1, Band 2, and Band 3. (User might give total, ask for breakdown if needed, or if they say "100, 120, 130" assume order 1, 2, 3).
+		2. Mortality: Any dead birds? How many and which band? (If 0, that's valid).
+		3. Stock/Observations: Did they receive feed? If yes, how many bags? Any problems?
+
+		RULES:
+		- CRITICAL: PRESERVE STATE. You MUST copy all existing non-null values from the input "Current State" to the "updated_state" in your response. Never drop existing data.
+		- CRITICAL: You MUST update the JSON fields in "updated_state" when the user provides NEW information.
+		- CRITICAL: Output valid JSON. The "reply" field MUST be a single line string. Use literal "\n" for line breaks. Do NOT use actual newlines in the string value.
+		- If the user provides data, update the JSON fields.
+		- If data is missing, your 'reply' should ask for the NEXT missing item in the priority list.
+		- If feed_received is true, you MUST ask for "feed_qty" (number of bags) if it is missing.
+		- If the user says "Rien a signaler" or "RAS" for observations, set Notes to "RAS".
+		- If ALL required fields (Eggs B1-3, Mortality, Feed/Notes) are filled (or explicitly set to 0/None), set the "step" to "COMPLETED".
+		- If the user gives all info at once, fill everything and set "step" to "COMPLETED".
+		- IMPORTANT: If the user provides ALL the information in a single message (Eggs, Mortality, Feed), you MUST set "step" to "COMPLETED" immediately.
+		- Your output must be ONLY a JSON object with this structure:
+		  {
+			"updated_state": {
+				"step": "COLLECTING" or "COMPLETED",
+				"eggs_band_1": (integer or null),
+				"eggs_band_2": (integer or null),
+				"eggs_band_3": (integer or null),
+				"mortality_qty": (integer or null),
+				"mortality_band": (string or ""),
+				"feed_received": (boolean or null),
+				"feed_qty": (float or null),
+				"notes": (string)
+			},
+			"reply": "Text to send to the farmer"
+		  }
+		- The 'reply' should be in French, polite, and concise.
+		`, string(stateJSON))
+	}
 
 	// Append current user message to history
 	currentHistory := append(state.History, Message{Role: "user", Content: input})
@@ -182,14 +234,72 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 	}
 
 	if err := json.Unmarshal([]byte(responseText), &aiResult); err != nil {
+		// Attempt to fix common JSON errors (newlines in strings)
+		sanitized := sanitizeJSON(responseText)
+		if sanitized != responseText {
+			if err2 := json.Unmarshal([]byte(sanitized), &aiResult); err2 == nil {
+				goto Success
+			}
+		}
+
 		// Fallback if AI didn't return valid JSON (rare with Claude 3 but possible)
 		// We return the old state and a generic error message to the user
 		return state, "Désolé, je n'ai pas bien compris. Pouvez-vous répéter ?", fmt.Errorf("failed to unmarshal ai response: %w. Response was: %s", err, responseText)
 	}
 
+Success:
 	// Update history in the returned state
 	newState := aiResult.UpdatedState
 	newState.History = append(currentHistory, Message{Role: "assistant", Content: aiResult.Reply})
 
 	return newState, aiResult.Reply, nil
+}
+
+func sanitizeJSON(input string) string {
+	// Locate the "reply" field
+	key := "\"reply\""
+	keyIdx := strings.Index(input, key)
+	if keyIdx == -1 {
+		return input
+	}
+
+	// Find the start of the value (first quote after key)
+	// input[keyIdx:] starts with "reply"...
+	// We need to skip "reply" and find the colon and then the quote.
+
+	// Let's search for the colon after key
+	colonIdx := strings.Index(input[keyIdx:], ":")
+	if colonIdx == -1 {
+		return input
+	}
+
+	// Now search for the quote after the colon
+	valueStartRel := strings.Index(input[keyIdx+colonIdx:], "\"")
+	if valueStartRel == -1 {
+		return input
+	}
+
+	valueStartAbs := keyIdx + colonIdx + valueStartRel + 1 // +1 to skip the opening quote
+
+	// Find the end of the value. Since we assume "reply" is the last field, we can look for the last quote in the string.
+	// But to be safer, we can look for the last quote before the last closing brace.
+
+	lastBraceIdx := strings.LastIndex(input, "}")
+	if lastBraceIdx == -1 {
+		return input
+	}
+
+	valueEndAbs := strings.LastIndex(input[:lastBraceIdx], "\"")
+	if valueEndAbs == -1 || valueEndAbs <= valueStartAbs {
+		return input
+	}
+
+	// Extract content
+	content := input[valueStartAbs:valueEndAbs]
+
+	// Escape newlines
+	escaped := strings.ReplaceAll(content, "\n", "\\n")
+	escaped = strings.ReplaceAll(escaped, "\r", "")
+
+	return input[:valueStartAbs] + escaped + input[valueEndAbs:]
 }

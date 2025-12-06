@@ -21,12 +21,13 @@ var ErrInvalidArguments = errors.New("invalid command arguments")
 var ErrUnsupportedCommand = errors.New("unsupported command")
 
 const (
-	eggsWriteRange      = "Eggs!A:F"
-	feedWriteRange      = "Feed!A:C"
-	mortalityWriteRange = "Mortality!A:C"
-	salesWriteRange     = "Sales!A:E"
-	expenseWriteRange   = "Expenses!A:C"
-	dateFormat          = "02/01/2006"
+	eggsWriteRange         = "Eggs!A:F"
+	feedWriteRange         = "Feed!A:C"
+	mortalityWriteRange    = "Mortality!A:C"
+	salesWriteRange        = "Sales!A:E"
+	expenseWriteRange      = "Expenses!A:C"
+	eggReceptionWriteRange = "EggReception!A:C"
+	dateFormat             = "02/01/2006"
 )
 
 // ReportingAdapter defines the reporting functions required by the dispatcher.
@@ -44,6 +45,7 @@ type Dispatcher interface {
 	SaveMortalityRecord(ctx context.Context, record models.MortalityRecord) error
 	SaveSaleRecord(ctx context.Context, record models.SaleRecord) error
 	SaveExpenseRecord(ctx context.Context, record models.ExpenseRecord) error
+	SaveEggReceptionRecord(ctx context.Context, record models.EggReceptionRecord) error
 }
 
 // Service implements the Dispatcher interface.
@@ -199,6 +201,12 @@ func (s *Service) SaveSaleRecord(ctx context.Context, record models.SaleRecord) 
 func (s *Service) SaveExpenseRecord(ctx context.Context, record models.ExpenseRecord) error {
 	values := []interface{}{record.Date.Format(dateFormat), record.Label, record.Amount}
 	return s.repo.WriteRow(ctx, expenseWriteRange, values)
+}
+
+// SaveEggReceptionRecord persists egg reception data.
+func (s *Service) SaveEggReceptionRecord(ctx context.Context, record models.EggReceptionRecord) error {
+	values := []interface{}{record.Date.Format(dateFormat), record.Quantity, record.UnitPrice}
+	return s.repo.WriteRow(ctx, eggReceptionWriteRange, values)
 }
 
 func (s *Service) buildEggRecord(cmd models.Command, now time.Time) (models.EggRecord, error) {

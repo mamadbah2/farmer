@@ -147,8 +147,17 @@ func (s *MetaWhatsAppService) handleConversation(ctx context.Context, userID, in
 	// Get current session state
 	currentState := s.sessions.GetSession(userID)
 
+	// Determine user role
+	role := "farmer"
+	// Farmer: 221777667017, Seller: 221778754577
+	if userID == "221778754577" {
+		role = "seller"
+	}
+
+	s.logger.Info("processing message", zap.String("user_id", userID), zap.String("role", role))
+
 	// Process with AI
-	newState, reply, err := s.aiClient.ProcessConversation(ctx, currentState, input)
+	newState, reply, err := s.aiClient.ProcessConversation(ctx, currentState, input, role)
 	if err != nil {
 		s.logger.Error("ai conversation failed", zap.Error(err))
 		return s.sendReply(ctx, userID, "Désolé, une erreur technique est survenue. Veuillez réessayer.")
@@ -177,6 +186,27 @@ func (s *MetaWhatsAppService) handleConversation(ctx context.Context, userID, in
 	if currentState.FeedQty != nil && newState.FeedQty == nil {
 		newState.FeedQty = currentState.FeedQty
 	}
+
+	// Seller fields merge
+	if currentState.SaleQty != nil && newState.SaleQty == nil {
+		newState.SaleQty = currentState.SaleQty
+	}
+	if currentState.SalePrice != nil && newState.SalePrice == nil {
+		newState.SalePrice = currentState.SalePrice
+	}
+	if currentState.SaleClient != nil && newState.SaleClient == nil {
+		newState.SaleClient = currentState.SaleClient
+	}
+	if currentState.SalePaid != nil && newState.SalePaid == nil {
+		newState.SalePaid = currentState.SalePaid
+	}
+	if currentState.ReceptionQty != nil && newState.ReceptionQty == nil {
+		newState.ReceptionQty = currentState.ReceptionQty
+	}
+	if currentState.ReceptionPrice != nil && newState.ReceptionPrice == nil {
+		newState.ReceptionPrice = currentState.ReceptionPrice
+	}
+
 	// Notes are cumulative or replaced, let's assume replacement is fine, or we could append.
 
 	// Update session
@@ -192,7 +222,10 @@ func (s *MetaWhatsAppService) handleConversation(ctx context.Context, userID, in
 
 		// Clear session and confirm
 		s.sessions.ClearSession(userID)
-		return s.sendReply(ctx, userID, "✅ Rapport journalier enregistré avec succès ! À demain.")
+
+		// Send the AI's summary reply + confirmation
+		finalMessage := reply + "\n\n✅ Données sauvegardées."
+		return s.sendReply(ctx, userID, finalMessage)
 	}
 
 	// Otherwise, send the AI's follow-up question
@@ -291,6 +324,49 @@ func (s *MetaWhatsAppService) saveDailyReport(ctx context.Context, state anthrop
 		})
 		if err != nil {
 			return fmt.Errorf("saving feed reception: %w", err)
+		}
+	}
+
+	// Save Sales (Abdullah)
+	if state.SaleQty != nil && *state.SaleQty > 0 {
+		price := 0.0
+		if state.SalePrice != nil {
+			price = *state.SalePrice
+		}
+		paid := 0.0
+		if state.SalePaid != nil {
+			paid = *state.SalePaid
+		}
+		clientName := "Unknown"
+		if state.SaleClient != nil {
+			clientName = *state.SaleClient
+		}
+
+		err := s.dispatcher.SaveSaleRecord(ctx, models.SaleRecord{
+			Date:         time.Now(),
+			Client:       clientName,
+			Quantity:     *state.SaleQty,
+			PricePerUnit: price,
+			Paid:         paid,
+		})
+		if err != nil {
+			return fmt.Errorf("saving sales: %w", err)
+		}
+	}
+
+	// Save Egg Reception (Abdullah)
+	if state.ReceptionQty != nil && *state.ReceptionQty > 0 {
+		price := 0.0
+		if state.ReceptionPrice != nil {
+			price = *state.ReceptionPrice
+		}
+		err := s.dispatcher.SaveEggReceptionRecord(ctx, models.EggReceptionRecord{
+			Date:      time.Now(),
+			Quantity:  *state.ReceptionQty,
+			UnitPrice: price,
+		})
+		if err != nil {
+			return fmt.Errorf("saving egg reception: %w", err)
 		}
 	}
 

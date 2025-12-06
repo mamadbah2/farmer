@@ -41,3 +41,10 @@ type ExpenseRecord struct {
 	Label  string
 	Amount float64
 }
+
+// EggReceptionRecord captures eggs received by the seller.
+type EggReceptionRecord struct {
+	Date      time.Time
+	Quantity  int
+	UnitPrice float64
+}
