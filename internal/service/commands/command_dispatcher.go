@@ -26,7 +26,7 @@ const (
 	mortalityWriteRange = "Mortality!A:C"
 	salesWriteRange     = "Sales!A:E"
 	expenseWriteRange   = "Expenses!A:C"
-	dateFormat          = "2006-01-02"
+	dateFormat          = "02/01/2006"
 )
 
 // ReportingAdapter defines the reporting functions required by the dispatcher.

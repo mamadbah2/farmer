@@ -154,6 +154,31 @@ func (s *MetaWhatsAppService) handleConversation(ctx context.Context, userID, in
 		return s.sendReply(ctx, userID, "Désolé, une erreur technique est survenue. Veuillez réessayer.")
 	}
 
+	// MERGE LOGIC: Ensure we don't lose data if AI returns nulls but we had data before
+	// This is a safety net in case the AI fails to copy the state correctly
+	if currentState.EggsBand1 != nil && newState.EggsBand1 == nil {
+		newState.EggsBand1 = currentState.EggsBand1
+	}
+	if currentState.EggsBand2 != nil && newState.EggsBand2 == nil {
+		newState.EggsBand2 = currentState.EggsBand2
+	}
+	if currentState.EggsBand3 != nil && newState.EggsBand3 == nil {
+		newState.EggsBand3 = currentState.EggsBand3
+	}
+	if currentState.MortalityQty != nil && newState.MortalityQty == nil {
+		newState.MortalityQty = currentState.MortalityQty
+	}
+	if currentState.MortalityBand != "" && newState.MortalityBand == "" {
+		newState.MortalityBand = currentState.MortalityBand
+	}
+	if currentState.FeedReceived != nil && newState.FeedReceived == nil {
+		newState.FeedReceived = currentState.FeedReceived
+	}
+	if currentState.FeedQty != nil && newState.FeedQty == nil {
+		newState.FeedQty = currentState.FeedQty
+	}
+	// Notes are cumulative or replaced, let's assume replacement is fine, or we could append.
+
 	// Update session
 	s.sessions.UpdateSession(userID, newState)
 
@@ -181,6 +206,7 @@ func (s *MetaWhatsAppService) saveDailyReport(ctx context.Context, state anthrop
 		zap.Any("eggs_b3", state.EggsBand3),
 		zap.Any("sales", state.SalesQty),
 		zap.Any("mortality", state.MortalityQty),
+		zap.Any("feed_qty", state.FeedQty),
 		zap.String("notes", state.Notes),
 	)
 
@@ -215,43 +241,58 @@ func (s *MetaWhatsAppService) saveDailyReport(ctx context.Context, state anthrop
 	}
 
 	// Save Sales
-	if state.SalesQty != nil && *state.SalesQty >= 0 {
-		err := s.dispatcher.SaveSaleRecord(ctx, models.SaleRecord{
-			Date:         time.Now(),
-			Client:       "Daily Report",
-			Quantity:     *state.SalesQty,
-			PricePerUnit: 0, // Price not captured in this flow yet
-			Paid:         0,
-		})
-		if err != nil {
-			return fmt.Errorf("saving sales: %w", err)
+	// REMOVED: Farmer does not track sales quantity anymore.
+	/*
+		if state.SalesQty != nil && *state.SalesQty > 0 {
+			err := s.dispatcher.SaveSaleRecord(ctx, models.SaleRecord{
+				Date:         time.Now(),
+				Client:       "Daily Report",
+				Quantity:     *state.SalesQty,
+				PricePerUnit: 0, // Price not captured in this flow yet
+				Paid:         0,
+			})
+			if err != nil {
+				return fmt.Errorf("saving sales: %w", err)
+			}
 		}
-	}
+	*/
 
 	// Save Mortality
 	if state.MortalityQty != nil && *state.MortalityQty >= 0 {
 		qty := *state.MortalityQty
-        reason := state.MortalityBand
+		reason := state.MortalityBand
 
-        // Si quantité est 0 et pas de raison, on écrit "RAS" ou "Aucune"
-        if qty == 0 && (reason == "" || reason == "0") {
-            reason = "RAS"
-        }
+		// Si quantité est 0 et pas de raison, on écrit "RAS" ou "Aucune"
+		if qty == 0 && (reason == "" || reason == "0") {
+			reason = "RAS"
+		}
 
-        err := s.dispatcher.SaveMortalityRecord(ctx, models.MortalityRecord{
-            Date:     time.Now(),
-            Quantity: qty,
-            Reason:   reason,
-        })
-        if err != nil {
-            return fmt.Errorf("saving mortality: %w", err)
-        }
+		err := s.dispatcher.SaveMortalityRecord(ctx, models.MortalityRecord{
+			Date:     time.Now(),
+			Quantity: qty,
+			Reason:   reason,
+		})
+		if err != nil {
+			return fmt.Errorf("saving mortality: %w", err)
+		}
 	}
 
-	// Save Feed/Notes (if not already saved with eggs)
-	// We can use the Feed sheet to log "Feed Received" boolean if needed,
-	// or just rely on the Notes in the Egg sheet.
-	// For now, let's assume Notes in Egg sheet covers general observations.
+	// Save Feed (Reception)
+	if state.FeedReceived != nil && *state.FeedReceived {
+		feedKg := 0.0
+		if state.FeedQty != nil {
+			feedKg = *state.FeedQty
+		}
+		// Log feed reception (assuming 0 population for this record type, or just tracking event)
+		err := s.dispatcher.SaveFeedRecord(ctx, models.FeedRecord{
+			Date:       time.Now(),
+			FeedKg:     feedKg,
+			Population: 0,
+		})
+		if err != nil {
+			return fmt.Errorf("saving feed reception: %w", err)
+		}
+	}
 
 	return nil
 }

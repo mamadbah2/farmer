@@ -37,8 +37,9 @@ type ConversationState struct {
 	MortalityQty  *int   `json:"mortality_qty,omitempty"`
 	MortalityBand string `json:"mortality_band,omitempty"`
 
-	FeedReceived *bool  `json:"feed_received,omitempty"`
-	Notes        string `json:"notes,omitempty"`
+	FeedReceived *bool    `json:"feed_received,omitempty"`
+	FeedQty      *float64 `json:"feed_qty,omitempty"`
+	Notes        string   `json:"notes,omitempty"`
 
 	// History tracks the conversation context
 	History []Message `json:"history,omitempty"`
@@ -97,9 +98,8 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 	
 	REQUIRED INFORMATION (Ask in this order if missing):
 	1. Production (Eggs): Quantity for Band 1, Band 2, and Band 3. (User might give total, ask for breakdown if needed, or if they say "100, 120, 130" assume order 1, 2, 3).
-	2. Sales: How many trays (alvéoles) sold? (If they say 0, that's valid).
-	3. Mortality: Any dead birds? How many and which band? (If 0, that's valid).
-	4. Stock/Observations: Did they receive feed? Any problems?
+	2. Mortality: Any dead birds? How many and which band? (If 0, that's valid).
+	3. Stock/Observations: Did they receive feed? If yes, how many bags? Any problems?
 
 	RULES:
 	- CRITICAL: PRESERVE STATE. You MUST copy all existing non-null values from the input "Current State" to the "updated_state" in your response. Never drop existing data.
@@ -107,8 +107,9 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 	- CRITICAL: Output valid JSON. Escape newlines in the "reply" string (use \n). Do not put real line breaks inside the string value.
 	- If the user provides data, update the JSON fields.
 	- If data is missing, your 'reply' should ask for the NEXT missing item in the priority list.
+	- If feed_received is true, you MUST ask for "feed_qty" (number of bags) if it is missing.
 	- If the user says "Rien a signaler" or "RAS" for observations, set Notes to "RAS".
-	- If ALL required fields (Eggs B1-3, Sales, Mortality, Feed/Notes) are filled (or explicitly set to 0/None), set the "step" to "COMPLETED".
+	- If ALL required fields (Eggs B1-3, Mortality, Feed/Notes) are filled (or explicitly set to 0/None), set the "step" to "COMPLETED".
 	- If the user gives all info at once, fill everything and set "step" to "COMPLETED".
 	- Your output must be ONLY a JSON object with this structure:
 	  {
@@ -117,10 +118,10 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 			"eggs_band_1": (integer or null),
 			"eggs_band_2": (integer or null),
 			"eggs_band_3": (integer or null),
-			"sales_qty": (integer or null),
 			"mortality_qty": (integer or null),
 			"mortality_band": (string or ""),
 			"feed_received": (boolean or null),
+			"feed_qty": (float or null),
 			"notes": (string)
 		},
 		"reply": "Text to send to the farmer"
