@@ -17,7 +17,7 @@ const (
 	dateLayout         = "2006-01-02"
 	eggsDataRange      = "Eggs!A:C"
 	feedDataRange      = "Feed!A:C"
-	mortalityDataRange = "Mortality!A:C"
+	mortalityDataRange = "Mortality!A:D"
 	salesDataRange     = "Sales!A:E"
 	expensesDataRange  = "Expenses!A:C"
 )
@@ -392,17 +392,19 @@ func aggregateMortality(rows [][]interface{}, target, previous time.Time) (int, 
 	prevKey := previous.Format(dateLayout)
 
 	for _, row := range rows {
-		if len(row) < 2 {
+		if len(row) < 4 {
 			continue
 		}
 		dateValue, err := parseDate(row[0])
 		if err != nil {
 			continue
 		}
-		qty, err := parseInt(row[1])
-		if err != nil {
-			continue
-		}
+
+		b1, _ := parseInt(row[1])
+		b2, _ := parseInt(row[2])
+		b3, _ := parseInt(row[3])
+		qty := b1 + b2 + b3
+
 		switch dateValue.Format(dateLayout) {
 		case targetKey:
 			today += qty
@@ -562,18 +564,18 @@ func sumEggsBetween(rows [][]interface{}, start, end time.Time) int {
 func sumMortalityBetween(rows [][]interface{}, start, end time.Time) int {
 	var total int
 	for _, row := range rows {
-		if len(row) < 2 {
+		if len(row) < 4 {
 			continue
 		}
 		dateValue, err := parseDate(row[0])
 		if err != nil || dateValue.Before(start) || dateValue.After(end) {
 			continue
 		}
-		qty, err := parseInt(row[1])
-		if err != nil {
-			continue
-		}
-		total += qty
+
+		b1, _ := parseInt(row[1])
+		b2, _ := parseInt(row[2])
+		b3, _ := parseInt(row[3])
+		total += b1 + b2 + b3
 	}
 	return total
 }

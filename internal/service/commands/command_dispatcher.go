@@ -23,7 +23,7 @@ var ErrUnsupportedCommand = errors.New("unsupported command")
 const (
 	eggsWriteRange         = "Eggs!A:F"
 	feedWriteRange         = "Feed!A:C"
-	mortalityWriteRange    = "Mortality!A:C"
+	mortalityWriteRange    = "Mortality!A:D"
 	salesWriteRange        = "Sales!A:E"
 	expenseWriteRange      = "Expenses!A:E"
 	eggReceptionWriteRange = "EggReception!A:C"
@@ -132,10 +132,7 @@ func (s *Service) HandleCommand(ctx context.Context, cmd models.Command, sender 
 			}
 			return s.reporting.CalculateMortalityRate(ctx, startOfWeek, normalizedNow)
 		})
-		message := fmt.Sprintf("Mortality logged for %s: %d birds.", record.Date.Format(dateFormat), record.Quantity)
-		if record.Reason != "" {
-			message += fmt.Sprintf(" Reason: %s.", record.Reason)
-		}
+		message := fmt.Sprintf("Mortality logged for %s: B1:%d, B2:%d, B3:%d.", record.Date.Format(dateFormat), record.Band1, record.Band2, record.Band3)
 		if summary != "" {
 			message += "\n" + summary
 		}
@@ -187,7 +184,7 @@ func (s *Service) SaveFeedRecord(ctx context.Context, record models.FeedRecord) 
 
 // SaveMortalityRecord persists mortality data.
 func (s *Service) SaveMortalityRecord(ctx context.Context, record models.MortalityRecord) error {
-	values := []interface{}{record.Date.Format(dateFormat), record.Quantity, record.Reason}
+	values := []interface{}{record.Date.Format(dateFormat), record.Band1, record.Band2, record.Band3}
 	return s.repo.WriteRow(ctx, mortalityWriteRange, values)
 }
 
@@ -267,21 +264,24 @@ func (s *Service) buildFeedRecord(cmd models.Command, now time.Time) (models.Fee
 }
 
 func (s *Service) buildMortalityRecord(cmd models.Command, now time.Time) (models.MortalityRecord, error) {
-	if len(cmd.Args) == 0 {
+	if len(cmd.Args) < 3 {
+		return models.MortalityRecord{}, errors.New("requires 3 arguments: band1 band2 band3")
+	}
+
+	b1, err1 := strconv.Atoi(cmd.Args[0])
+	b2, err2 := strconv.Atoi(cmd.Args[1])
+	b3, err3 := strconv.Atoi(cmd.Args[2])
+
+	if err1 != nil || err2 != nil || err3 != nil {
 		return models.MortalityRecord{}, ErrInvalidArguments
 	}
 
-	quantity, err := strconv.Atoi(cmd.Args[0])
-	if err != nil {
-		return models.MortalityRecord{}, ErrInvalidArguments
-	}
-
-	reason := ""
-	if len(cmd.Args) > 1 {
-		reason = strings.Join(cmd.Args[1:], " ")
-	}
-
-	return models.MortalityRecord{Date: now, Quantity: quantity, Reason: reason}, nil
+	return models.MortalityRecord{
+		Date:  now,
+		Band1: b1,
+		Band2: b2,
+		Band3: b3,
+	}, nil
 }
 
 func (s *Service) buildSaleRecord(cmd models.Command, now time.Time) (models.SaleRecord, error) {

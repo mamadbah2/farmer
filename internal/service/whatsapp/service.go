@@ -60,7 +60,7 @@ var commandReplies = map[models.CommandType]models.AutomationReply{
 	},
 	models.CommandMortality: {
 		Title:   "Mortality Update",
-		Message: "Report mortality and suspected causes, e.g. /mortality 3 heat stress.",
+		Message: "Report mortality per band, e.g. /mortality 1 0 2 (Band1 Band2 Band3).",
 	},
 	models.CommandSales: {
 		Title:   "Sales Report",
@@ -236,17 +236,23 @@ func (s *MetaWhatsAppService) saveFarmerData(ctx context.Context, state anthropi
 	}
 
 	// Save Mortality
-	if state.MortalityQty != nil && *state.MortalityQty >= 0 {
-		qty := *state.MortalityQty
-		reason := state.MortalityBand
-		if qty == 0 && (reason == "" || reason == "0") {
-			reason = "RAS"
+	if state.MortalityBand1 != nil || state.MortalityBand2 != nil || state.MortalityBand3 != nil {
+		m1, m2, m3 := 0, 0, 0
+		if state.MortalityBand1 != nil {
+			m1 = *state.MortalityBand1
+		}
+		if state.MortalityBand2 != nil {
+			m2 = *state.MortalityBand2
+		}
+		if state.MortalityBand3 != nil {
+			m3 = *state.MortalityBand3
 		}
 
 		err := s.dispatcher.SaveMortalityRecord(ctx, models.MortalityRecord{
-			Date:     time.Now(),
-			Quantity: qty,
-			Reason:   reason,
+			Date:  time.Now(),
+			Band1: m1,
+			Band2: m2,
+			Band3: m3,
 		})
 		if err != nil {
 			return fmt.Errorf("saving mortality: %w", err)

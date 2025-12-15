@@ -21,9 +21,10 @@ type FeedRecord struct {
 
 // MortalityRecord captures mortality incidents.
 type MortalityRecord struct {
-	Date     time.Time
-	Quantity int
-	Reason   string
+	Date  time.Time
+	Band1 int
+	Band2 int
+	Band3 int
 }
 
 // SaleRecord captures sales transactions.

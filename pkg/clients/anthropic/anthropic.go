@@ -34,8 +34,9 @@ type ConversationState struct {
 
 	SalesQty *int `json:"sales_qty,omitempty"` // In trays (alvéoles)
 
-	MortalityQty  *int   `json:"mortality_qty,omitempty"`
-	MortalityBand string `json:"mortality_band,omitempty"`
+	MortalityBand1 *int `json:"mortality_band_1,omitempty"`
+	MortalityBand2 *int `json:"mortality_band_2,omitempty"`
+	MortalityBand3 *int `json:"mortality_band_3,omitempty"`
 
 	FeedReceived *bool    `json:"feed_received,omitempty"`
 	FeedQty      *float64 `json:"feed_qty,omitempty"`
@@ -75,11 +76,14 @@ func (s *ConversationState) Merge(newState ConversationState) {
 	if newState.EggsBand3 != nil {
 		s.EggsBand3 = newState.EggsBand3
 	}
-	if newState.MortalityQty != nil {
-		s.MortalityQty = newState.MortalityQty
+	if newState.MortalityBand1 != nil {
+		s.MortalityBand1 = newState.MortalityBand1
 	}
-	if newState.MortalityBand != "" {
-		s.MortalityBand = newState.MortalityBand
+	if newState.MortalityBand2 != nil {
+		s.MortalityBand2 = newState.MortalityBand2
+	}
+	if newState.MortalityBand3 != nil {
+		s.MortalityBand3 = newState.MortalityBand3
 	}
 	if newState.FeedReceived != nil {
 		s.FeedReceived = newState.FeedReceived
@@ -252,7 +256,7 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 		
 		REQUIRED INFORMATION (Ask in this order if missing):
 		1. Production (Eggs): Quantity for Band 1, Band 2, and Band 3. (User might give total, ask for breakdown if needed, or if they say "100, 120, 130" assume order 1, 2, 3).
-		2. Mortality: Any dead birds? How many and which band? (If 0, that's valid).
+		2. Mortality: How many dead birds in Band 1, Band 2, and Band 3? (If 0, that's valid).
 		3. Stock/Observations: Did they receive feed? If yes, how many bags? Any problems?
 
 		RULES:
@@ -263,7 +267,7 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 		- If data is missing, your 'reply' should ask for the NEXT missing item in the priority list.
 		- If feed_received is true, you MUST ask for "feed_qty" (number of bags) if it is missing.
 		- If the user says "Rien a signaler" or "RAS" for observations, set Notes to "RAS".
-		- If ALL required fields (Eggs B1-3, Mortality, Feed/Notes) are filled (or explicitly set to 0/None), set the "step" to "COMPLETED".
+		- If ALL required fields (Eggs B1-3, Mortality B1-3, Feed/Notes) are filled (or explicitly set to 0/None), set the "step" to "COMPLETED".
 		- If the user gives all info at once, fill everything and set "step" to "COMPLETED".
 		- IMPORTANT: If the user provides ALL the information in a single message (Eggs, Mortality, Feed), you MUST set "step" to "COMPLETED" immediately.
 		- Your output must be ONLY a JSON object with this structure:
@@ -273,8 +277,9 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 				"eggs_band_1": (integer or null),
 				"eggs_band_2": (integer or null),
 				"eggs_band_3": (integer or null),
-				"mortality_qty": (integer or null),
-				"mortality_band": (string or ""),
+				"mortality_band_1": (integer or null),
+				"mortality_band_2": (integer or null),
+				"mortality_band_3": (integer or null),
 				"feed_received": (boolean or null),
 				"feed_qty": (float or null),
 				"notes": (string)
