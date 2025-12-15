@@ -2,13 +2,9 @@ pipeline {
     agent any
 
     environment {
-        // Remplacez ceci par votre nom d'utilisateur Docker Hub
-        DOCKER_HUB_USER = 'mamadbah2' 
         IMAGE_NAME = 'farmer-bot'
         CONTAINER_NAME = 'farmer-bot'
         PORT = '4040'
-        // Nom complet de l'image : user/repo
-        FULL_IMAGE = "${DOCKER_HUB_USER}/${IMAGE_NAME}"
     }
 
     stages {
@@ -18,20 +14,13 @@ pipeline {
             }
         }
 
-        stage('Build & Push to Docker Hub') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    // Utilise les identifiants 'docker-hub-credentials' configurés dans Jenkins
-                    docker.withRegistry('', 'docker-hub-credentials') {
-                        // Build de l'image
-                        def customImage = docker.build("${FULL_IMAGE}:${BUILD_NUMBER}")
-                        
-                        // Push avec le numéro de build (pour l'historique)
-                        customImage.push()
-                        
-                        // Push avec le tag 'latest' (pour la prod)
-                        customImage.push('latest')
-                    }
+                    // Build de l'image localement
+                    docker.build("${IMAGE_NAME}:${BUILD_NUMBER}")
+                    // Tag as latest for convenience
+                    sh "docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest"
                 }
             }
         }
@@ -42,9 +31,6 @@ pipeline {
                     // Arrêter et supprimer l'ancien conteneur
                     sh "docker stop ${CONTAINER_NAME} || true"
                     sh "docker rm ${CONTAINER_NAME} || true"
-                    
-                    // Tirer la dernière image depuis Docker Hub
-                    sh "docker pull ${FULL_IMAGE}:latest"
 
                     // Lancer le nouveau conteneur avec les secrets injectés
                     withCredentials([
@@ -62,7 +48,7 @@ pipeline {
                             -e ANTHROPIC_API_KEY=\${ANTHROPIC_KEY} \
                             -e WHATSAPP_TOKEN=\${WHATSAPP_TOKEN} \
                             -e VERIFY_TOKEN=\${VERIFY_TOKEN} \
-                            ${FULL_IMAGE}:latest
+                            ${IMAGE_NAME}:latest
                         """
                     }
                 }
