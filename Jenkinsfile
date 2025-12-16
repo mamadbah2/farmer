@@ -68,7 +68,7 @@ pipeline {
         }
     }
 
-    post {VERIFY_TOKEN
+    post {
         success {
             echo 'Deployment successful!'
         }
