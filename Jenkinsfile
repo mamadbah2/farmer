@@ -5,6 +5,12 @@ pipeline {
         IMAGE_NAME = 'farmer-bot'
         CONTAINER_NAME = 'farmer-bot'
         PORT = '4040'
+        
+        // Configuration non-sensible (hardcodée pour simplifier, ou à mettre dans Jenkins env vars)
+        WHATSAPP_PHONE_NUMBER_ID = '903482039510763'
+        WHATSAPP_GROUP_ID = 'WHATSAPP_GROUP_ID'
+        GOOGLE_SHEET_DATABASE_ID = '1gBjWDdlfcbQAa2EEFUfN8MzidBWByjECYQhX9TX4uaI'
+        TIMEZONE = 'Africa/Conakry'
     }
 
     stages {
@@ -45,9 +51,15 @@ pipeline {
                             --restart always \
                             -p ${PORT}:${PORT} \
                             -v \${GOOGLE_CREDS}:/app/credentials.json \
+                            -e APP_PORT=${PORT} \
+                            -e GOOGLE_SHEETS_CREDENTIALS_PATH=/app/credentials.json \
+                            -e GOOGLE_SHEET_DATABASE_ID=${GOOGLE_SHEET_DATABASE_ID} \
+                            -e WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID} \
+                            -e WHATSAPP_GROUP_ID=${WHATSAPP_GROUP_ID} \
+                            -e TIMEZONE=${TIMEZONE} \
                             -e ANTHROPIC_API_KEY=\${ANTHROPIC_KEY} \
                             -e WHATSAPP_TOKEN=\${WHATSAPP_TOKEN} \
-                            -e VERIFY_TOKEN=\${VERIFY_TOKEN} \
+                            -e META_VERIFY_TOKEN=\${VERIFY_TOKEN} \
                             ${IMAGE_NAME}:latest
                         """
                     }
@@ -56,7 +68,7 @@ pipeline {
         }
     }
 
-    post {
+    post {VERIFY_TOKEN
         success {
             echo 'Deployment successful!'
         }
