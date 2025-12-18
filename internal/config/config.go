@@ -25,12 +25,12 @@ type ServerConfig struct {
 
 // WhatsAppConfig contains credentials and options for the Meta WhatsApp Cloud API.
 type WhatsAppConfig struct {
-	AccessToken   string
-	PhoneNumberID string
-	VerifyToken   string
-	BaseURL       string
-	APIVersion    string
-	GroupID       string
+	AccessToken      string
+	PhoneNumberID    string
+	VerifyToken      string
+	BaseURL          string
+	APIVersion       string
+	GroupID          string
 	ExpenseManagerID string
 }
 
@@ -77,12 +77,12 @@ func Load(envFile string) (*Config, error) {
 			Port: getenvWithDefault("APP_PORT", "8080"),
 		},
 		WhatsApp: WhatsAppConfig{
-			AccessToken:   os.Getenv("WHATSAPP_TOKEN"),
-			PhoneNumberID: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"),
-			VerifyToken:   os.Getenv("META_VERIFY_TOKEN"),
-			BaseURL:       getenvWithDefault("WHATSAPP_BASE_URL", "https://graph.facebook.com"),
-			APIVersion:    getenvWithDefault("WHATSAPP_API_VERSION", "v20.0"),
-			GroupID:       os.Getenv("WHATSAPP_GROUP_ID"),
+			AccessToken:      os.Getenv("WHATSAPP_TOKEN"),
+			PhoneNumberID:    os.Getenv("WHATSAPP_PHONE_NUMBER_ID"),
+			VerifyToken:      os.Getenv("META_VERIFY_TOKEN"),
+			BaseURL:          getenvWithDefault("WHATSAPP_BASE_URL", "https://graph.facebook.com"),
+			APIVersion:       getenvWithDefault("WHATSAPP_API_VERSION", "v20.0"),
+			GroupID:          os.Getenv("WHATSAPP_GROUP_ID"),
 			ExpenseManagerID: os.Getenv("WHATSAPP_EXPENSE_MANAGER_ID"),
 		},
 		Sheets: SheetsConfig{
@@ -145,7 +145,6 @@ func (c *Config) Validate() error {
 
 	if c.Sheets.CredentialsPath == "" {
 		return errors.New("GOOGLE_SHEETS_CREDENTIALS_PATH must be provided")
-	}return errors.New("GOOGLE_SHEETS_CREDENTIALS_PATH must be provided")
 	}
 
 	if c.Sheets.SpreadsheetID == "" {
