@@ -31,6 +31,7 @@ type WhatsAppConfig struct {
 	BaseURL       string
 	APIVersion    string
 	GroupID       string
+	ExpenseManagerID string
 }
 
 // SheetsConfig contains configuration required to interact with Google Sheets.
@@ -82,6 +83,7 @@ func Load(envFile string) (*Config, error) {
 			BaseURL:       getenvWithDefault("WHATSAPP_BASE_URL", "https://graph.facebook.com"),
 			APIVersion:    getenvWithDefault("WHATSAPP_API_VERSION", "v20.0"),
 			GroupID:       os.Getenv("WHATSAPP_GROUP_ID"),
+			ExpenseManagerID: os.Getenv("WHATSAPP_EXPENSE_MANAGER_ID"),
 		},
 		Sheets: SheetsConfig{
 			CredentialsPath: os.Getenv("GOOGLE_SHEETS_CREDENTIALS_PATH"),
@@ -133,13 +135,17 @@ func (c *Config) Validate() error {
 	if c.WhatsApp.APIVersion == "" {
 		return errors.New("WHATSAPP_API_VERSION must not be empty")
 	}
-
 	if c.WhatsApp.GroupID == "" {
 		return errors.New("WHATSAPP_GROUP_ID must be provided")
 	}
 
+	if c.WhatsApp.ExpenseManagerID == "" {
+		return errors.New("WHATSAPP_EXPENSE_MANAGER_ID must be provided")
+	}
+
 	if c.Sheets.CredentialsPath == "" {
 		return errors.New("GOOGLE_SHEETS_CREDENTIALS_PATH must be provided")
+	}return errors.New("GOOGLE_SHEETS_CREDENTIALS_PATH must be provided")
 	}
 
 	if c.Sheets.SpreadsheetID == "" {

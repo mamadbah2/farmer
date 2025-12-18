@@ -123,37 +123,30 @@ func (s *Service) GenerateWeeklyReport(ctx context.Context, referenceDate time.T
 	weekEnd := truncateToDay(referenceDate)
 	weekStart := mondayStart(weekEnd)
 
-	eggRows, err := s.repo.ReadRange(ctx, eggsDataRange)
-	if err != nil {
-		return "", fmt.Errorf("load eggs data: %w", err)
-	}
-	feedRows, err := s.repo.ReadRange(ctx, feedDataRange)
-	if err != nil {
-		return "", fmt.Errorf("load feed data: %w", err)
-	}
-	mortalityRows, err := s.repo.ReadRange(ctx, mortalityDataRange)
-	if err != nil {
-		return "", fmt.Errorf("load mortality data: %w", err)
-	}
-	salesRows, err := s.repo.ReadRange(ctx, salesDataRange)
-	if err != nil {
-		return "", fmt.Errorf("load sales data: %w", err)
-	}
-	expenseRows, err := s.repo.ReadRange(ctx, expensesDataRange)
-	if err != nil {
-		return "", fmt.Errorf("load expenses data: %w", err)
+	if s.reportRepo == nil {
+		return "", fmt.Errorf("mongodb repository not initialized")
 	}
 
-	weeklyEggs := sumEggsBetween(eggRows, weekStart, weekEnd)
-	weeklyFeed := sumFeedBetween(feedRows, weekStart, weekEnd)
-	weeklyMortality := sumMortalityBetween(mortalityRows, weekStart, weekEnd)
-	weeklySales := sumSalesBetween(salesRows, weekStart, weekEnd)
-	weeklyExpenses := sumExpensesBetween(expenseRows, weekStart, weekEnd)
-	weeklyProfit := weeklySales.Paid - weeklyExpenses.Total
+	reports, err := s.reportRepo.GetDailyReports(ctx, weekStart, weekEnd)
+	if err != nil {
+		return "", fmt.Errorf("fetch weekly reports from mongodb: %w", err)
+	}
+
+	var weeklyEggs, weeklyMortality int
+	var weeklyFeed, weeklySales, weeklyExpenses, weeklyProfit float64
+
+	for _, r := range reports {
+		weeklyEggs += r.EggsCollected
+		weeklyMortality += r.Mortality
+		weeklyFeed += r.FeedConsumed
+		weeklySales += r.SalesAmount
+		weeklyExpenses += r.Expenses
+		weeklyProfit += r.Profit
+	}
 
 	return fmt.Sprintf("Weekly summary (%s-%s) – 🥚 %s eggs, 🌾 %.2f kg feed, 🪦 %s mortality, 💸 %s GNF sales, 🧾 %s GNF expenses, 📈 %s GNF profit.",
-		weekStart.Format("02/01"), weekEnd.Format("02/01"), formatInt(weeklyEggs), weeklyFeed.TotalKg, formatInt(weeklyMortality),
-		formatFloat(weeklySales.Paid, 0), formatFloat(weeklyExpenses.Total, 0), formatFloat(weeklyProfit, 0)), nil
+		weekStart.Format("02/01"), weekEnd.Format("02/01"), formatInt(weeklyEggs), weeklyFeed, formatInt(weeklyMortality),
+		formatFloat(weeklySales, 0), formatFloat(weeklyExpenses, 0), formatFloat(weeklyProfit, 0)), nil
 }
 
 // CalculateEggsSummary aggregates egg production for a period and returns a formatted string.
@@ -560,123 +553,6 @@ func aggregateExpenses(rows [][]interface{}, target, previous time.Time) (expens
 	}
 
 	return today, prev
-}
-
-func sumEggsBetween(rows [][]interface{}, start, end time.Time) int {
-	var total int
-	for _, row := range rows {
-		if len(row) < 2 {
-			continue
-		}
-		dateValue, err := parseDate(row[0])
-		if err != nil || dateValue.Before(start) || dateValue.After(end) {
-			continue
-		}
-		qty, err := parseInt(row[1])
-		if err != nil {
-			continue
-		}
-		total += qty
-	}
-	return total
-}
-
-func sumMortalityBetween(rows [][]interface{}, start, end time.Time) int {
-	var total int
-	for _, row := range rows {
-		if len(row) < 4 {
-			continue
-		}
-		dateValue, err := parseDate(row[0])
-		if err != nil || dateValue.Before(start) || dateValue.After(end) {
-			continue
-		}
-
-		b1, _ := parseInt(row[1])
-		b2, _ := parseInt(row[2])
-		b3, _ := parseInt(row[3])
-		total += b1 + b2 + b3
-	}
-	return total
-}
-
-func sumFeedBetween(rows [][]interface{}, start, end time.Time) feedSnapshot {
-	var snapshot feedSnapshot
-	for _, row := range rows {
-		if len(row) < 2 {
-			continue
-		}
-		dateValue, err := parseDate(row[0])
-		if err != nil || dateValue.Before(start) || dateValue.After(end) {
-			continue
-		}
-		feedKg, err := parseFloat(row[1])
-		if err != nil {
-			continue
-		}
-		snapshot.TotalKg += feedKg
-		if len(row) > 2 {
-			if pop, err := parseInt(row[2]); err == nil && pop > 0 {
-				snapshot.Population = pop
-			}
-		}
-	}
-	return snapshot
-}
-
-func sumSalesBetween(rows [][]interface{}, start, end time.Time) salesSnapshot {
-	var snapshot salesSnapshot
-	for _, row := range rows {
-		if len(row) < 4 {
-			continue
-		}
-		dateValue, err := parseDate(row[0])
-		if err != nil || dateValue.Before(start) || dateValue.After(end) {
-			continue
-		}
-		qty, err := parseInt(row[2])
-		if err != nil {
-			continue
-		}
-		price, err := parseFloat(row[3])
-		if err != nil {
-			continue
-		}
-		expected := float64(qty) * price
-		paid := expected
-		if len(row) > 4 {
-			if v, err := parseFloat(row[4]); err == nil {
-				paid = v
-			}
-		}
-		unpaid := expected - paid
-		if unpaid < 0 {
-			unpaid = 0
-		}
-		snapshot.Expected += expected
-		snapshot.Paid += paid
-		snapshot.Unpaid += unpaid
-	}
-	return snapshot
-}
-
-func sumExpensesBetween(rows [][]interface{}, start, end time.Time) expenseSnapshot {
-	var snapshot expenseSnapshot
-	for _, row := range rows {
-		if len(row) < 3 {
-			continue
-		}
-		dateValue, err := parseDate(row[0])
-		if err != nil || dateValue.Before(start) || dateValue.After(end) {
-			continue
-		}
-		amount, err := parseFloat(row[2])
-		if err != nil {
-			continue
-		}
-		snapshot.Total += amount
-	}
-	return snapshot
 }
 
 func formatFeedLine(today feedSnapshot, previous feedSnapshot) string {

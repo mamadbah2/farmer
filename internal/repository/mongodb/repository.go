@@ -3,7 +3,9 @@ package mongodb
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
@@ -13,6 +15,7 @@ import (
 // Repository defines the interface for report storage.
 type Repository interface {
 	SaveDailyReport(ctx context.Context, report models.DailyReport) error
+	GetDailyReports(ctx context.Context, start, end time.Time) ([]models.DailyReport, error)
 }
 
 // MongoDBRepository implements the Repository interface for MongoDB.
@@ -50,6 +53,30 @@ func (r *MongoDBRepository) SaveDailyReport(ctx context.Context, report models.D
 		return fmt.Errorf("failed to insert daily report: %w", err)
 	}
 	return nil
+}
+
+// GetDailyReports retrieves daily reports within a date range.
+func (r *MongoDBRepository) GetDailyReports(ctx context.Context, start, end time.Time) ([]models.DailyReport, error) {
+	collection := r.client.Database(r.dbName).Collection(r.collName)
+	filter := bson.M{
+		"date": bson.M{
+			"$gte": start,
+			"$lte": end,
+		},
+	}
+
+	cursor, err := collection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find daily reports: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var reports []models.DailyReport
+	if err := cursor.All(ctx, &reports); err != nil {
+		return nil, fmt.Errorf("failed to decode daily reports: %w", err)
+	}
+
+	return reports, nil
 }
 
 // Close closes the MongoDB connection.

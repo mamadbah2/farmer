@@ -13,6 +13,7 @@ import (
 	"github.com/mamadbah2/farmer/internal/config"
 	"github.com/mamadbah2/farmer/internal/repository/mongodb"
 	"github.com/mamadbah2/farmer/internal/repository/sheets"
+	"github.com/mamadbah2/farmer/internal/scheduler"
 	"github.com/mamadbah2/farmer/internal/server/handlers"
 	"github.com/mamadbah2/farmer/internal/server/router"
 	commandsvc "github.com/mamadbah2/farmer/internal/service/commands"
@@ -65,6 +66,11 @@ func main() {
 	messagingSvc := whatsappsvc.NewMetaWhatsAppService(cfg.WhatsApp, whatsClient, aiClient, commandDispatcher, baseLogger.Named("svc.whatsapp"))
 	webhookHandler := handlers.NewWebhookHandler(messagingSvc, baseLogger.Named("handlers.whatsapp"))
 	engine := router.New(webhookHandler, baseLogger.Named("router"))
+
+	// Initialize Scheduler
+	sched := scheduler.NewScheduler(*cfg, reportingSvc, messagingSvc, baseLogger.Named("scheduler"))
+	sched.Start()
+	defer sched.Stop()
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
