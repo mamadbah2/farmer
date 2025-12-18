@@ -10,6 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/mamadbah2/farmer/internal/domain/models"
+	"github.com/mamadbah2/farmer/internal/repository/mongodb"
 	repo "github.com/mamadbah2/farmer/internal/repository/sheets"
 )
 
@@ -24,16 +26,17 @@ const (
 
 // Service exposes lightweight analytics for WhatsApp summaries.
 type Service struct {
-	repo   repo.Repository
-	logger *zap.Logger
+	repo       repo.Repository
+	reportRepo mongodb.Repository
+	logger     *zap.Logger
 }
 
 // NewService wires a new reporting service instance.
-func NewService(repository repo.Repository, logger *zap.Logger) *Service {
+func NewService(repository repo.Repository, reportRepo mongodb.Repository, logger *zap.Logger) *Service {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &Service{repo: repository, logger: logger}
+	return &Service{repo: repository, reportRepo: reportRepo, logger: logger}
 }
 
 // GenerateDailyReport aggregates key metrics for the provided date and formats a WhatsApp-ready message.
@@ -67,9 +70,26 @@ func (s *Service) GenerateDailyReport(ctx context.Context, reportDate time.Time)
 	mortalityToday, mortalityPrev := aggregateMortality(mortalityRows, referenceDate, previousDate)
 	salesToday, salesPrev := aggregateSales(salesRows, referenceDate, previousDate)
 	expensesToday, expensesPrev := aggregateExpenses(expenseRows, referenceDate, previousDate)
-
 	profitToday := salesToday.Paid - expensesToday.Total
 	profitPrev := salesPrev.Paid - expensesPrev.Total
+
+	// Save to MongoDB
+	if s.reportRepo != nil {
+		report := models.DailyReport{
+			Date:          referenceDate,
+			EggsCollected: eggsToday,
+			Mortality:     mortalityToday,
+			FeedConsumed:  feedToday.TotalKg,
+			SalesAmount:   salesToday.Paid,
+			UnpaidBalance: salesToday.Unpaid,
+			Expenses:      expensesToday.Total,
+			Profit:        profitToday,
+			CreatedAt:     time.Now(),
+		}
+		if err := s.reportRepo.SaveDailyReport(ctx, report); err != nil {
+			s.logger.Error("failed to save daily report to mongodb", zap.Error(err))
+		}
+	}
 
 	weeklySummary, err := s.GenerateWeeklyReport(ctx, referenceDate)
 	if err != nil {

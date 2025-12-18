@@ -15,6 +15,7 @@ type Config struct {
 	Sheets    SheetsConfig
 	Reporting ReportingConfig
 	AI        AIConfig
+	MongoDB   MongoDBConfig
 }
 
 // ServerConfig holds HTTP server related options.
@@ -46,7 +47,13 @@ type ReportingConfig struct {
 
 // AIConfig holds settings for LLM providers.
 type AIConfig struct {
-    AnthropicKey string
+	AnthropicKey string
+}
+
+// MongoDBConfig holds settings for MongoDB.
+type MongoDBConfig struct {
+	URI    string
+	DBName string
 }
 
 // Load reads environment variables (optionally from the provided file) and
@@ -86,6 +93,10 @@ func Load(envFile string) (*Config, error) {
 		},
 		AI: AIConfig{
 			AnthropicKey: os.Getenv("ANTHROPIC_API_KEY"),
+		},
+		MongoDB: MongoDBConfig{
+			URI:    getenvWithDefault("MONGODB_URI", "mongodb+srv://mamadbah:$Atlas2022@cluster0.wlwhrhg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"),
+			DBName: getenvWithDefault("MONGODB_DB_NAME", "farmer"),
 		},
 	}
 
@@ -143,10 +154,9 @@ func (c *Config) Validate() error {
 		return errors.New("TIMEZONE must be provided")
 	}
 
-    if c.AI.AnthropicKey == "" {
-        return errors.New("ANTHROPIC_API_KEY must be provided")
-    }
-
+	if c.AI.AnthropicKey == "" {
+		return errors.New("ANTHROPIC_API_KEY must be provided")
+	}
 
 	return nil
 }

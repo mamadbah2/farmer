@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/mamadbah2/farmer/internal/config"
+	"github.com/mamadbah2/farmer/internal/repository/mongodb"
 	"github.com/mamadbah2/farmer/internal/repository/sheets"
 	"github.com/mamadbah2/farmer/internal/server/handlers"
 	"github.com/mamadbah2/farmer/internal/server/router"
@@ -38,17 +39,27 @@ func main() {
 		baseLogger.Fatal("failed to init sheets repository", zap.Error(err))
 	}
 
-	reportingSvc := reportingsvc.NewService(sheetsRepo, baseLogger.Named("svc.reporting"))
+	mongoRepo, err := mongodb.NewMongoDBRepository(context.Background(), cfg.MongoDB.URI, cfg.MongoDB.DBName)
+	if err != nil {
+		baseLogger.Fatal("failed to init mongodb repository", zap.Error(err))
+	}
+	defer func() {
+		if err := mongoRepo.Close(context.Background()); err != nil {
+			baseLogger.Error("failed to close mongodb connection", zap.Error(err))
+		}
+	}()
+
+	reportingSvc := reportingsvc.NewService(sheetsRepo, mongoRepo, baseLogger.Named("svc.reporting"))
 	commandDispatcher := commandsvc.NewService(sheetsRepo, reportingSvc, baseLogger.Named("svc.commands"))
 
 	// Initialize AI Client
-    var aiClient anthropic.Client
-    if cfg.AI.AnthropicKey != "" {
-        aiClient = anthropic.NewClient(cfg.AI.AnthropicKey)
-        baseLogger.Info("anthropic ai client enabled")
-    } else {
-        baseLogger.Warn("anthropic api key missing, natural language processing disabled")
-    }
+	var aiClient anthropic.Client
+	if cfg.AI.AnthropicKey != "" {
+		aiClient = anthropic.NewClient(cfg.AI.AnthropicKey)
+		baseLogger.Info("anthropic ai client enabled")
+	} else {
+		baseLogger.Warn("anthropic api key missing, natural language processing disabled")
+	}
 
 	whatsClient := whatsappclient.NewClient(cfg.WhatsApp)
 	messagingSvc := whatsappsvc.NewMetaWhatsAppService(cfg.WhatsApp, whatsClient, aiClient, commandDispatcher, baseLogger.Named("svc.whatsapp"))
