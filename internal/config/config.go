@@ -141,7 +141,7 @@ func (c *Config) Validate() error {
 
 	if c.WhatsApp.ExpenseManagerID == "" {
 		// Provide a default value for ExpenseManagerID if not set
-		c.WhatsApp.ExpenseManagerID = "224628165784"
+		c.WhatsApp.ExpenseManagerID = "224622350064"
 	}
 
 	if c.Sheets.CredentialsPath == "" {

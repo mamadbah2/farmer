@@ -149,11 +149,11 @@ func (s *MetaWhatsAppService) handleConversation(ctx context.Context, userID, in
 
 	// Determine user role
 	role := "farmer"
-	// Farmer: 221777667017, Seller: 221778754577, Expense: 224628165784
+	// Farmer: *, Expense: 224622350064, Seller: 224612868926
 	switch userID {
-	case "221778754577":
+	case "224612868926":
 		role = "seller"
-	case "224628165784":
+	case "224622350064":
 		role = "expense_manager"
 	}
 
