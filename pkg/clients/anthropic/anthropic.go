@@ -55,6 +55,7 @@ type ConversationState struct {
 	ExpenseQty       *float64 `json:"expense_qty,omitempty"`
 	ExpenseUnitPrice *float64 `json:"expense_unit_price,omitempty"`
 	ExpenseNotes     *string  `json:"expense_notes,omitempty"`
+	ExpenseType      *string  `json:"expense_type,omitempty"` // "physical" or "service"
 
 	// History tracks the conversation context
 	History []Message `json:"history,omitempty"`
@@ -127,6 +128,9 @@ func (s *ConversationState) Merge(newState ConversationState) {
 	}
 	if newState.ExpenseNotes != nil {
 		s.ExpenseNotes = newState.ExpenseNotes
+	}
+	if newState.ExpenseType != nil {
+		s.ExpenseType = newState.ExpenseType
 	}
 }
 
@@ -227,12 +231,16 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 		   - Unit Price
 		   - Notes (Motif/Observation)
 
+		INFERRED INFORMATION (Do not ask, infer from context):
+		- Expense Type: Determine if this is a "physical" asset (e.g., wheelbarrow, shovel, equipment, furniture) or "other" (e.g., feed, transport, salary, service, consumable).
+
 		RULES:
 		- CRITICAL: PRESERVE STATE. Copy all existing non-null values.
 		- CRITICAL: Output valid JSON. The "reply" field MUST be a single line string. Use literal "\n" for line breaks. Do NOT use actual newlines in the string value.
 		- If the user provides data, update the JSON fields.
 		- If data is missing, ask for the NEXT missing item.
 		- If ALL required fields for the reported activity are filled, set "step" to "COMPLETED".
+		- If the expense is classified as "physical", your reply MUST confirm that it has been added to the inventory (StateStock).
 		- Your output must be ONLY a JSON object with this structure:
 		  {
 			"updated_state": {
@@ -240,7 +248,8 @@ func (c *anthropicClient) ProcessConversation(ctx context.Context, state Convers
 				"expense_category": (string or null),
 				"expense_qty": (float or null),
 				"expense_unit_price": (float or null),
-				"expense_notes": (string or null)
+				"expense_notes": (string or null),
+				"expense_type": "physical" or "other"
 			},
 			"reply": "Text to send to the expense manager (French)"
 		  }

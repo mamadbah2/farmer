@@ -16,13 +16,15 @@ import (
 type Repository interface {
 	SaveDailyReport(ctx context.Context, report models.DailyReport) error
 	GetDailyReports(ctx context.Context, start, end time.Time) ([]models.DailyReport, error)
+	SaveStockItem(ctx context.Context, item models.StateStockRecord) error
 }
 
 // MongoDBRepository implements the Repository interface for MongoDB.
 type MongoDBRepository struct {
-	client   *mongo.Client
-	dbName   string
-	collName string
+	client        *mongo.Client
+	dbName        string
+	collName      string
+	stockCollName string
 }
 
 // NewMongoDBRepository creates a new MongoDB repository.
@@ -39,9 +41,10 @@ func NewMongoDBRepository(ctx context.Context, uri string, dbName string) (*Mong
 	}
 
 	return &MongoDBRepository{
-		client:   client,
-		dbName:   dbName,
-		collName: "daily_reports",
+		client:        client,
+		dbName:        dbName,
+		collName:      "daily_reports",
+		stockCollName: "stock_items",
 	}, nil
 }
 
@@ -77,6 +80,16 @@ func (r *MongoDBRepository) GetDailyReports(ctx context.Context, start, end time
 	}
 
 	return reports, nil
+}
+
+// SaveStockItem saves a physical stock item to the database.
+func (r *MongoDBRepository) SaveStockItem(ctx context.Context, item models.StateStockRecord) error {
+	collection := r.client.Database(r.dbName).Collection(r.stockCollName)
+	_, err := collection.InsertOne(ctx, item)
+	if err != nil {
+		return fmt.Errorf("failed to insert stock item: %w", err)
+	}
+	return nil
 }
 
 // Close closes the MongoDB connection.

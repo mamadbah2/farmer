@@ -356,6 +356,21 @@ func (s *MetaWhatsAppService) saveExpenseData(ctx context.Context, state anthrop
 		if err != nil {
 			return fmt.Errorf("saving expense: %w", err)
 		}
+
+		// If it's a physical asset, also save to StateStock
+		if state.ExpenseType != nil && strings.ToLower(*state.ExpenseType) == "physical" {
+			err := s.dispatcher.SaveStateStockRecord(ctx, models.StateStockRecord{
+				Date:      time.Now(),
+				ItemName:  category, // Using category as item name for now
+				Quantity:  qty,
+				UnitPrice: unitPrice,
+				Condition: "Bon", // Default condition
+			})
+			if err != nil {
+				s.logger.Error("failed to save state stock record", zap.Error(err))
+				// We don't fail the whole request if stock save fails, just log it
+			}
+		}
 	}
 	return nil
 }

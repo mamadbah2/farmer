@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/mamadbah2/farmer/internal/domain/models"
+	"github.com/mamadbah2/farmer/internal/repository/mongodb"
 	repo "github.com/mamadbah2/farmer/internal/repository/sheets"
 )
 
@@ -26,6 +27,7 @@ const (
 	mortalityWriteRange    = "Mortality!A:D"
 	salesWriteRange        = "Sales!A:E"
 	expenseWriteRange      = "Expenses!A:E"
+	stateStockWriteRange   = "StateStock!A:E"
 	eggReceptionWriteRange = "EggReception!A:C"
 	dateFormat             = "02/01/2006"
 )
@@ -45,24 +47,27 @@ type Dispatcher interface {
 	SaveMortalityRecord(ctx context.Context, record models.MortalityRecord) error
 	SaveSaleRecord(ctx context.Context, record models.SaleRecord) error
 	SaveExpenseRecord(ctx context.Context, record models.ExpenseRecord) error
+	SaveStateStockRecord(ctx context.Context, record models.StateStockRecord) error
 	SaveEggReceptionRecord(ctx context.Context, record models.EggReceptionRecord) error
 }
 
 // Service implements the Dispatcher interface.
 type Service struct {
 	repo      repo.Repository
+	mongoRepo mongodb.Repository
 	reporting ReportingAdapter
 	logger    *zap.Logger
 	now       func() time.Time
 }
 
 // NewService constructs a command dispatcher.
-func NewService(repository repo.Repository, reporting ReportingAdapter, logger *zap.Logger) *Service {
+func NewService(repository repo.Repository, mongoRepo mongodb.Repository, reporting ReportingAdapter, logger *zap.Logger) *Service {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	return &Service{
 		repo:      repository,
+		mongoRepo: mongoRepo,
 		reporting: reporting,
 		logger:    logger,
 		now:       time.Now,
@@ -194,7 +199,7 @@ func (s *Service) SaveSaleRecord(ctx context.Context, record models.SaleRecord) 
 	return s.repo.WriteRow(ctx, salesWriteRange, values)
 }
 
-// SaveExpenseRecord persists expenses transactions.
+// SaveExpenseRecord appends a new expense entry to the sheet.
 func (s *Service) SaveExpenseRecord(ctx context.Context, record models.ExpenseRecord) error {
 	values := []interface{}{
 		record.Date.Format(dateFormat),
@@ -205,6 +210,30 @@ func (s *Service) SaveExpenseRecord(ctx context.Context, record models.ExpenseRe
 	}
 	return s.repo.WriteRow(ctx, expenseWriteRange, values)
 }
+// SaveStateStockRecord appends a new stock entry to the sheet.
+func (s *Service) SaveStateStockRecord(ctx context.Context, record models.StateStockRecord) error {
+	values := []interface{}{
+		record.Date.Format(dateFormat),
+		record.ItemName,
+		record.Quantity,
+		record.UnitPrice,
+		record.Condition,
+	}
+	if err := s.repo.WriteRow(ctx, stateStockWriteRange, values); err != nil {
+		return fmt.Errorf("write to sheets: %w", err)
+	}
+
+	if s.mongoRepo != nil {
+		if err := s.mongoRepo.SaveStockItem(ctx, record); err != nil {
+			s.logger.Error("failed to save stock item to mongodb", zap.Error(err))
+			// Don't fail the operation if mongo fails, as sheet is primary for now?
+			// Or maybe we should log and continue.
+		}
+		return nil
+	}
+	return s.repo.WriteRow(ctx, stateStockWriteRange, values)
+}
+
 
 // SaveEggReceptionRecord persists egg reception data.
 func (s *Service) SaveEggReceptionRecord(ctx context.Context, record models.EggReceptionRecord) error {

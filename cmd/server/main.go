@@ -51,7 +51,7 @@ func main() {
 	}()
 
 	reportingSvc := reportingsvc.NewService(sheetsRepo, mongoRepo, baseLogger.Named("svc.reporting"))
-	commandDispatcher := commandsvc.NewService(sheetsRepo, reportingSvc, baseLogger.Named("svc.commands"))
+	commandDispatcher := commandsvc.NewService(sheetsRepo, mongoRepo, reportingSvc, baseLogger.Named("svc.commands"))
 
 	// Initialize AI Client
 	var aiClient anthropic.Client
