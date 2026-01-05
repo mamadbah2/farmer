@@ -34,23 +34,31 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    // Arrêter et supprimer l'ancien conteneur
+                    // 1. Définir un chemin permanent sur votre VPS
+                    def permanentConfigDir = "/home/mamadbah/farmer-bot-config"
+                    
+                    // 2. Créer le dossier s'il n'existe pas
+                    sh "mkdir -p ${permanentConfigDir}"
+
                     sh "docker stop ${CONTAINER_NAME} || true"
                     sh "docker rm ${CONTAINER_NAME} || true"
 
-                    // Lancer le nouveau conteneur avec les secrets injectés
                     withCredentials([
                         file(credentialsId: 'google-sheets-credentials', variable: 'GOOGLE_CREDS'),
                         string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_KEY'),
                         string(credentialsId: 'whatsapp-token', variable: 'WHATSAPP_TOKEN'),
                         string(credentialsId: 'verify-token', variable: 'VERIFY_TOKEN')
                     ]) {
+                        // 3. COPIER le fichier temporaire vers le dossier permanent
+                        sh "cp \${GOOGLE_CREDS} ${permanentConfigDir}/credentials.json"
+                        
+                        // 4. Lancer le conteneur en utilisant le chemin PERMANENT
                         sh """
                             docker run -d \
                             --name ${CONTAINER_NAME} \
                             --restart always \
                             -p ${PORT}:${PORT} \
-                            -v \${GOOGLE_CREDS}:/app/credentials.json \
+                            -v ${permanentConfigDir}/credentials.json:/app/credentials.json \
                             -e APP_PORT=${PORT} \
                             -e GOOGLE_SHEETS_CREDENTIALS_PATH=/app/credentials.json \
                             -e GOOGLE_SHEET_DATABASE_ID=${GOOGLE_SHEET_DATABASE_ID} \
