@@ -35,7 +35,7 @@ pipeline {
             steps {
                 script {
                     // 1. Définir un chemin permanent sur votre VPS
-                    def permanentConfigDir = "/home/mamadbah/farmer-bot-config"
+                    def permanentConfigDir = "/var/lib/jenkins/farmer-bot-data"
                     
                     // 2. Créer le dossier s'il n'existe pas
                     sh "mkdir -p ${permanentConfigDir}"
